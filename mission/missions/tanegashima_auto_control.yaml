@@ -1,0 +1,29 @@
+schema_version: 1
+mission_profile:
+  name: tanegashima_auto_control
+  description: "種子島ロケットコンテスト自動制御カムバック部門向けProfile"
+  enabled_capabilities:
+    - onboard_autonomy
+    - gnss_guidance
+    - camera_guidance
+    - release_mechanism
+    - release_detection
+    - local_logging
+    - telemetry_downlink
+  disabled_capabilities_in_competition:
+    - remote_manual_cmd_vel
+    - remote_set_mode
+    - remote_fire_release
+    - cloud_to_vehicle_uplink
+  policy:
+    manual_override_allowed: false
+    remote_manual_cmd_allowed: false
+    remote_uplink_allowed: false
+    cam_guidance_mode: attack
+    required_logs:
+      - navigation_state
+      - sensor_observation
+      - estimated_state
+      - command_output
+      - mode_transition
+      - goal_judgement

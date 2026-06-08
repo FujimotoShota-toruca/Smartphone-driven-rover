@@ -1,0 +1,57 @@
+schema_version: 1
+
+telemetry:
+  pico_hk:
+    msg_id: 0x0800
+    source: pico
+    period_ms: 500
+    fields:
+      pico_state:
+        type: enum
+        values: [BOOT, WAIT_BLE, LINKED, ARMED, DRIVE_ENABLED, SAFE_STOP, ESTOP]
+      battery_v:
+        type: float32
+        unit: V
+        optional: true
+      motor_l_cmd:
+        type: float32
+        unit: normalized
+      motor_r_cmd:
+        type: float32
+        unit: normalized
+      estop:
+        type: bool
+      watchdog_timeout_count:
+        type: uint32
+      last_cmd_seq:
+        type: uint32
+
+  phone_nav:
+    msg_id: 0x0810
+    source: phone
+    period_ms: 200
+    fields:
+      mission_mode:
+        type: enum
+        values: [IDLE, MANUAL, AUTO_ARMED, GNSS_GUIDANCE, CONE_SEARCH, CAM_VISUAL_SERVOING, GOAL, SAFE_STOP, MANUAL_OVERRIDE, ABORT]
+      gps_lat:
+        type: float64
+        unit: deg
+      gps_lon:
+        type: float64
+        unit: deg
+      gps_accuracy_m:
+        type: float32
+        unit: m
+      heading_deg:
+        type: float32
+        unit: deg
+      target_distance_m:
+        type: float32
+        unit: m
+      cone_detected:
+        type: bool
+      cone_x_error:
+        type: float32
+      cone_area_ratio:
+        type: float32

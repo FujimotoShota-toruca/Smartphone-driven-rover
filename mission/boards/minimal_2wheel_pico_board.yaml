@@ -1,0 +1,19 @@
+schema_version: 1
+board_profile:
+  name: minimal_2wheel_pico_board
+  capabilities:
+    drive_control: true
+    safety_supervisor: true
+    ble_link: true
+    local_telemetry: true
+    local_logging: false
+    release_mechanism: false
+    release_detection: false
+    status_indicator: true
+    external_sensor_if: false
+  pins:
+    motor_l_in1: GP0
+    motor_l_in2: GP1
+    motor_r_in1: GP2
+    motor_r_in2: GP3
+    led_1: GP14

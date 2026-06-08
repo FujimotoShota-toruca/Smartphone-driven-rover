@@ -1,0 +1,14 @@
+schema_version: 1
+mission_profile:
+  name: engineering_rover_demo
+  enabled_capabilities:
+    - ble_control
+    - manual_control
+    - telemetry
+    - logging
+    - cloud_sync
+  policy:
+    manual_override_allowed: true
+    remote_manual_cmd_allowed: true
+    remote_uplink_allowed: true
+    cam_guidance_mode: safe

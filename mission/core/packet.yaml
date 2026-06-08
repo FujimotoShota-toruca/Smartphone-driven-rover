@@ -1,0 +1,24 @@
+schema_version: 1
+
+packet:
+  envelope:
+    protocol_version: uint8
+    mission_id: string
+    rover_id: string
+    packet_type: enum
+    msg_type: string
+    seq: uint32
+    timestamp_ms: uint64
+    ttl_ms: uint32
+    schema:
+      core_protocol_hash: string
+      mission_db_hash: string
+      board_profile_hash: string
+    payload: object
+
+fixed_safe_messages:
+  - emergency_stop
+  - heartbeat
+  - basic_status
+  - disconnect
+  - read_schema_info

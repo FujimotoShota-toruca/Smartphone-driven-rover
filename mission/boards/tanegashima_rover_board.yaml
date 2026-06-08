@@ -1,0 +1,34 @@
+schema_version: 1
+board_profile:
+  name: tanegashima_rover_board
+
+  capabilities:
+    drive_control: true
+    safety_supervisor: true
+    ble_link: true
+    local_telemetry: true
+    local_logging: true
+    release_mechanism: true
+    release_detection: true
+    status_indicator: true
+    external_sensor_if: true
+    wheel_encoder: false
+    battery_monitor: false
+
+  pins:
+    motor_b_in1: GP0
+    motor_b_in2: GP1
+    motor_a_in1: GP2
+    motor_a_in2: GP3
+    sd_det_a: GP9
+    sd_clk: GP10
+    sd_mosi: GP11
+    sd_miso: GP12
+    sd_cs: GP13
+    led_1: GP14
+    led_2: GP15
+    i2c_sda: GP16
+    i2c_scl: GP17
+    nichrome_sw: GP20
+    limit_switch: GP21
+    cds_adc: GP26

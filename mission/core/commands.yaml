@@ -1,0 +1,72 @@
+schema_version: 1
+
+commands:
+  heartbeat:
+    msg_id: 0x0001
+    destination: pico
+    priority: high
+    fields:
+      node_id:
+        type: string
+
+  cmd_vel:
+    msg_id: 0x0100
+    destination: pico
+    required_role: operator
+    ttl_ms: 300
+    ack_required: true
+    fields:
+      vx:
+        type: float32
+        unit: m/s
+        min: -0.5
+        max: 0.5
+        default: 0.0
+      wz:
+        type: float32
+        unit: rad/s
+        min: -2.0
+        max: 2.0
+        default: 0.0
+      brake:
+        type: bool
+        default: false
+
+  emergency_stop:
+    msg_id: 0x01FF
+    destination: phone_and_pico
+    priority: critical
+    allowed_modes: ["*"]
+    fields:
+      reason:
+        type: string
+        max_length: 64
+
+  reset_estop:
+    msg_id: 0x0200
+    destination: pico
+    required_role: operator
+    fields:
+      confirm:
+        type: bool
+
+  arm_release:
+    msg_id: 0x0300
+    destination: pico
+    required_role: operator
+    board_capability: release_mechanism
+    fields:
+      arm_window_ms:
+        type: uint32
+        default: 5000
+
+  fire_nichrome:
+    msg_id: 0x0301
+    destination: pico
+    required_role: operator
+    board_capability: release_mechanism
+    fields:
+      duration_ms:
+        type: uint32
+        min: 100
+        max: 3000

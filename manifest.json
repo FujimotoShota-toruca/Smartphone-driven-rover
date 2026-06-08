@@ -1,0 +1,136 @@
+{
+  "created_at": "2026-06-08",
+  "decisions": [
+    {
+      "id": "DEC-001",
+      "title": "対応プラットフォーム",
+      "decision": "初期正式対応は Android Chrome。iPhone/Safari は将来拡張。"
+    },
+    {
+      "id": "DEC-002",
+      "title": "Webアプリ形態",
+      "decision": "PWA前提のWebアプリ。ネイティブラッパーは将来拡張。"
+    },
+    {
+      "id": "DEC-003",
+      "title": "Level 1 MVP範囲",
+      "decision": "Lv1 MVPは安全機能付きBLE手動制御基盤まで。"
+    },
+    {
+      "id": "DEC-004",
+      "title": "BLEプロトコル形式",
+      "decision": "JSON over BLEを採用し、PacketCodec抽象化を導入する。"
+    },
+    {
+      "id": "DEC-005A",
+      "title": "Core / Mission Profile / Board Profile分離",
+      "decision": "Core Platform、Mission Profile、Board Profileを分離する。"
+    },
+    {
+      "id": "DEC-005",
+      "title": "Pico Wの責務",
+      "decision": "Pico Wは capability-based lower I/O controller とする。"
+    },
+    {
+      "id": "DEC-006",
+      "title": "スマホOBCの責務",
+      "decision": "スマホはCore Platformにおける主計算機/OBCとする。"
+    },
+    {
+      "id": "DEC-007",
+      "title": "Cloud Mission Serverの必須化",
+      "decision": "Cloud Mission ServerはLv3で必須。Lv1/Lv2ではCloudなしでも動作可能。"
+    },
+    {
+      "id": "DEC-008",
+      "title": "PC—スマホ通信方式",
+      "decision": "Lv3のPC—Cloud—スマホ通信はWSSを採用する。"
+    },
+    {
+      "id": "DEC-009",
+      "title": "認証・認可",
+      "decision": "username/password + server-side session。admin/operator/viewer/phone_nodeを採用。"
+    },
+    {
+      "id": "DEC-010",
+      "title": "Mission Database範囲",
+      "decision": "commands/telemetry/safety/mission_profile/board_profile/uiをYAML化対象とする。sequence/DSLは将来拡張。"
+    },
+    {
+      "id": "DEC-011",
+      "title": "schema_hash運用",
+      "decision": "schema_hash不一致時は通常コマンド禁止、安全系のみ許可。"
+    },
+    {
+      "id": "DEC-012",
+      "title": "安全機能",
+      "decision": "Fixed Safety Kernel + Profile-configurable Safety Policyを採用。"
+    },
+    {
+      "id": "DEC-013",
+      "title": "手動操作と自律制御の優先順位",
+      "decision": "Manual OverrideはCore Platformに持ち、使用可否はMission Profileで制御する。"
+    },
+    {
+      "id": "DEC-014",
+      "title": "Level 2自律アルゴリズム",
+      "decision": "GNSS誘導 + HSVカラーコーン検出 + CAM Visual Servoing + ゴール判定。safe/attack接近はProfileで切替。"
+    },
+    {
+      "id": "DEC-015",
+      "title": "ログ・リプレイ設計",
+      "decision": "JSONLイベントログ + CSV export。Web地上局リプレイ、ROS/Simulator Adapterは将来拡張。"
+    },
+    {
+      "id": "DEC-016",
+      "title": "ROS/シミュレータ連携",
+      "decision": "ROS/SimulatorはCore本体に組み込まずAdapterとして外出しする。"
+    },
+    {
+      "id": "DEC-017",
+      "title": "リポジトリ構成",
+      "decision": "monorepo + 厳格なpackage境界。Mission Database / Protocol定義を単一正本として管理。"
+    },
+    {
+      "id": "DEC-018",
+      "title": "Codex投入単位",
+      "decision": "Capability単位Issueで投入。安全critical部分はMicro Issue化する。"
+    }
+  ],
+  "files": [
+    "README.md",
+    "docs/adr/ADR-SUMMARY.md",
+    "docs/adr/DEC-001-.md",
+    "docs/adr/DEC-002-Web.md",
+    "docs/adr/DEC-003-Level-1-MVP.md",
+    "docs/adr/DEC-004-BLE.md",
+    "docs/adr/DEC-005-Pico-W.md",
+    "docs/adr/DEC-005A-Core-Mission-Profile-Board-Profile.md",
+    "docs/adr/DEC-006-OBC.md",
+    "docs/adr/DEC-007-Cloud-Mission-Server.md",
+    "docs/adr/DEC-008-PC.md",
+    "docs/adr/DEC-009-.md",
+    "docs/adr/DEC-010-Mission-Database.md",
+    "docs/adr/DEC-011-schema_hash.md",
+    "docs/adr/DEC-012-.md",
+    "docs/adr/DEC-013-.md",
+    "docs/adr/DEC-014-Level-2.md",
+    "docs/adr/DEC-015-.md",
+    "docs/adr/DEC-016-ROS.md",
+    "docs/adr/DEC-017-.md",
+    "docs/adr/DEC-018-Codex.md",
+    "docs/design/design_doc.md",
+    "docs/design/repository_structure.md",
+    "docs/implementation/implementation_plan.md",
+    "docs/requirements/requirements.md",
+    "mission/boards/minimal_2wheel_pico_board.yaml",
+    "mission/boards/tanegashima_rover_board.yaml",
+    "mission/core/commands.yaml",
+    "mission/core/packet.yaml",
+    "mission/core/safety.yaml",
+    "mission/core/telemetry.yaml",
+    "mission/missions/engineering_rover_demo.yaml",
+    "mission/missions/tanegashima_auto_control.yaml",
+    "mission/ui/default_ui.yaml"
+  ]
+}

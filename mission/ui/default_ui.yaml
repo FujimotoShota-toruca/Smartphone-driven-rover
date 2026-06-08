@@ -1,0 +1,15 @@
+schema_version: 1
+ui_profile:
+  name: default_ui
+  pages:
+    - id: phone_manual
+      title: "Smartphone Manual Control"
+    - id: phone_autonomy
+      title: "Smartphone OBC Autonomy"
+    - id: ground_station
+      title: "PC Ground Station"
+    - id: replay
+      title: "Replay"
+  telemetry_panels:
+    - pico_hk
+    - phone_nav

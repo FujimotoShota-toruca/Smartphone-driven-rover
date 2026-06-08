@@ -1,0 +1,27 @@
+schema_version: 1
+
+fixed_safety_kernel:
+  estop:
+    enabled: true
+    latch: true
+    disable_override: true
+  heartbeat:
+    required: true
+  cmd_vel:
+    ttl_required: true
+  schema_hash:
+    reject_normal_commands_on_mismatch: true
+  release:
+    require_arm_before_fire: true
+    require_timeout_limit: true
+
+policy_defaults:
+  max_vx: 0.5
+  max_wz: 2.0
+  max_motor_cmd: 1.0
+  motor_slew_rate: 1.0
+  heartbeat_timeout_ms: 1000
+  cmd_vel_default_ttl_ms: 300
+  release_fire_duration_ms: 1500
+  manual_override_allowed: true
+  remote_manual_cmd_allowed: true
