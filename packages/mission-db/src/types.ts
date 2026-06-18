@@ -19,8 +19,14 @@ export interface SafetyDefinition {
 export interface MissionProfile {
   name: string;
   enabled_capabilities?: string[];
-  policy?: MissionDbRecord;
+  policy?: MissionProfilePolicy;
   [key: string]: unknown;
+}
+
+export interface MissionProfilePolicy extends MissionDbRecord {
+  manual_override_allowed?: boolean;
+  remote_manual_cmd_allowed?: boolean;
+  remote_uplink_allowed?: boolean;
 }
 
 export interface MissionProfileDefinition {

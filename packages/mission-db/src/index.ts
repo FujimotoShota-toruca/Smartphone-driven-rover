@@ -1,6 +1,17 @@
 export { canonicalJson } from "./canonicalJson";
 export { CommandRegistry } from "./CommandRegistry";
 export {
+  MissionProfileGuard,
+  type CommandOrigin,
+  type MissionMode,
+  type MissionProfileGuardInput,
+  type MissionProfileGuardResult,
+} from "./MissionProfileGuard";
+export {
+  PacketAdmissionGuard,
+  type PacketAdmissionResult,
+} from "./PacketAdmissionGuard";
+export {
   loadBoardProfiles,
   loadMissionDb,
   loadMissionProfiles,
@@ -26,6 +37,7 @@ export type {
   MissionDbRecord,
   MissionProfile,
   MissionProfileDefinition,
+  MissionProfilePolicy,
   SafetyDefinition,
   TelemetryDefinition,
   ValidationError,
