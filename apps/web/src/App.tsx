@@ -197,28 +197,61 @@ export function App() {
         </label>
       </section>
 
-      <section className="controlGrid" aria-label="Manual controls">
-        <button type="button" className="driveButton" onClick={() => sendCmd(0.3, 0)}>
-          Forward
-        </button>
-        <button type="button" className="driveButton" onClick={() => sendCmd(0, -1)}>
-          Left
-        </button>
-        <button type="button" className="driveButton stop" onClick={() => sendCmd(0, 0, true)}>
-          Stop
-        </button>
-        <button type="button" className="driveButton" onClick={() => sendCmd(0, 1)}>
-          Right
-        </button>
-        <button type="button" className="driveButton" onClick={() => sendCmd(-0.3, 0)}>
-          Back
-        </button>
-        <button type="button" className="driveButton neutral" onClick={() => sendCmd(0, 0)}>
-          Neutral
-        </button>
-        <button type="button" className="estopButton" onClick={sendEmergencyStop}>
-          E-stop
-        </button>
+      <section className="manualPanel" aria-label="Manual controls">
+        <div className="drivePad" aria-label="Drive pad">
+          <button
+            type="button"
+            className="driveButton forward"
+            onClick={() => sendCmd(0.3, 0)}
+          >
+            Forward
+          </button>
+          <button
+            type="button"
+            className="driveButton left"
+            onClick={() => sendCmd(0, -1)}
+          >
+            Left
+          </button>
+          <button
+            type="button"
+            className="driveButton stop"
+            onClick={() => sendCmd(0, 0, true)}
+          >
+            Stop
+          </button>
+          <button
+            type="button"
+            className="driveButton right"
+            onClick={() => sendCmd(0, 1)}
+          >
+            Right
+          </button>
+          <button
+            type="button"
+            className="driveButton back"
+            onClick={() => sendCmd(-0.3, 0)}
+          >
+            Back
+          </button>
+        </div>
+
+        <div className="safetyControls" aria-label="Safety controls">
+          <button
+            type="button"
+            className="estopButton"
+            onClick={sendEmergencyStop}
+          >
+            E-stop
+          </button>
+          <button
+            type="button"
+            className="neutralButton"
+            onClick={() => sendCmd(0, 0)}
+          >
+            Neutral
+          </button>
+        </div>
       </section>
 
       <section className="detailsGrid">

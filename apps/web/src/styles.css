@@ -108,33 +108,70 @@ input {
   background: #ffffff;
 }
 
-.controlGrid {
+.manualPanel {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: minmax(280px, 1fr) minmax(220px, 0.5fr);
+  gap: 14px;
   margin-bottom: 18px;
 }
 
+.drivePad {
+  display: grid;
+  grid-template-areas:
+    ". forward ."
+    "left stop right"
+    ". back .";
+  grid-template-columns: repeat(3, minmax(84px, 1fr));
+  grid-template-rows: repeat(3, 84px);
+  gap: 10px;
+}
+
 .driveButton {
-  min-height: 70px;
+  min-height: 84px;
   font-weight: 800;
 }
 
+.driveButton.forward {
+  grid-area: forward;
+}
+
+.driveButton.left {
+  grid-area: left;
+}
+
 .driveButton.stop {
+  grid-area: stop;
   background: #263444;
   color: #ffffff;
 }
 
-.driveButton.neutral {
-  grid-column: span 2;
+.driveButton.right {
+  grid-area: right;
+}
+
+.driveButton.back {
+  grid-area: back;
+}
+
+.safetyControls {
+  display: grid;
+  grid-template-rows: 1fr 1fr;
+  gap: 10px;
 }
 
 .estopButton {
-  min-height: 70px;
+  min-height: 84px;
   border-color: #ad2525;
   background: #c73333;
   color: #ffffff;
   font-weight: 900;
+}
+
+.neutralButton {
+  min-height: 84px;
+  border-color: #4d6270;
+  background: #eef3f5;
+  font-weight: 800;
 }
 
 .detailsGrid {
@@ -196,15 +233,18 @@ pre {
     grid-template-columns: 1fr 1fr;
   }
 
-  .controlGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .manualPanel {
+    grid-template-columns: 1fr;
   }
 
-  .driveButton.neutral {
-    grid-column: span 1;
+  .drivePad {
+    grid-template-columns: repeat(3, minmax(72px, 1fr));
+    grid-template-rows: repeat(3, 76px);
   }
 
-  .estopButton {
-    grid-column: span 2;
+  .driveButton,
+  .estopButton,
+  .neutralButton {
+    min-height: 76px;
   }
 }
