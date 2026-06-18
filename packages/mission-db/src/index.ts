@@ -6,6 +6,12 @@ export {
 } from "./BoardProfileGuard";
 export { CommandRegistry } from "./CommandRegistry";
 export {
+  CommandAuthorizationPipeline,
+  type CommandAuthorizationInput,
+  type CommandAuthorizationResult,
+  type CommandAuthorizationStage,
+} from "./CommandAuthorizationPipeline";
+export {
   MissionProfileGuard,
   type CommandOrigin,
   type MissionMode,
