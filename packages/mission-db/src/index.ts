@@ -1,4 +1,5 @@
 export { canonicalJson } from "./canonicalJson";
+export { CommandRegistry } from "./CommandRegistry";
 export {
   loadBoardProfiles,
   loadMissionDb,
@@ -6,6 +7,7 @@ export {
   loadYamlFile,
 } from "./loadMissionDb";
 export { hashMissionDb, sha256CanonicalJson } from "./hashMissionDb";
+export { SchemaHashGuard, type SchemaHashGuardResult } from "./SchemaHashGuard";
 export {
   validateBoardProfileDefinition,
   validateCommandsDefinition,
