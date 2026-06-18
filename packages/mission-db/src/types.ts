@@ -13,7 +13,18 @@ export interface TelemetryDefinition {
 export interface SafetyDefinition {
   schema_version: number;
   fixed_safety_kernel: MissionDbRecord;
-  policy_defaults: MissionDbRecord;
+  policy_defaults: SafetyPolicy;
+}
+
+export interface SafetyPolicy extends MissionDbRecord {
+  max_vx?: number;
+  max_wz?: number;
+  max_motor_cmd?: number;
+  motor_slew_rate?: number;
+  heartbeat_timeout_ms?: number;
+  cmd_vel_default_ttl_ms?: number;
+  release_fire_duration_ms?: number;
+  release_allowed_modes?: string[];
 }
 
 export interface MissionProfile {

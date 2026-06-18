@@ -1,4 +1,9 @@
 export { canonicalJson } from "./canonicalJson";
+export {
+  BoardProfileGuard,
+  type BoardProfileGuardInput,
+  type BoardProfileGuardResult,
+} from "./BoardProfileGuard";
 export { CommandRegistry } from "./CommandRegistry";
 export {
   MissionProfileGuard,
@@ -20,6 +25,11 @@ export {
 export { hashMissionDb, sha256CanonicalJson } from "./hashMissionDb";
 export { SchemaHashGuard, type SchemaHashGuardResult } from "./SchemaHashGuard";
 export {
+  SafetyPolicyGuard,
+  type SafetyPolicyGuardInput,
+  type SafetyPolicyGuardResult,
+} from "./SafetyPolicyGuard";
+export {
   validateBoardProfileDefinition,
   validateCommandsDefinition,
   validateMissionDb,
@@ -38,6 +48,7 @@ export type {
   MissionProfile,
   MissionProfileDefinition,
   MissionProfilePolicy,
+  SafetyPolicy,
   SafetyDefinition,
   TelemetryDefinition,
   ValidationError,
