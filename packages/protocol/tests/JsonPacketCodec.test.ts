@@ -42,19 +42,16 @@ describe("JsonPacketCodec", () => {
     expect(() => codec.decode(invalidJson)).toThrow(CodecError);
   });
 
-  it("throws CodecError when a required field is missing", () => {
+  it("leaves envelope validation to PacketEnvelopeValidator", () => {
     const { mission_id: _missionId, ...missingMissionId } = packet;
     const encoded = new TextEncoder().encode(JSON.stringify(missingMissionId));
 
-    expect(() => codec.decode(encoded)).toThrow(CodecError);
+    expect(codec.decode(encoded)).toEqual(missingMissionId);
   });
 
-  it("throws CodecError when encoding an invalid packet", () => {
-    const invalidPacket = {
-      ...packet,
-      ttl_ms: -1,
-    } as RoverPacket;
+  it("throws CodecError when decoded JSON is not an object", () => {
+    const encoded = new TextEncoder().encode("null");
 
-    expect(() => codec.encode(invalidPacket)).toThrow(CodecError);
+    expect(() => codec.decode(encoded)).toThrow(CodecError);
   });
 });
