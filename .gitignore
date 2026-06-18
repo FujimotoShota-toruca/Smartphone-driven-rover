@@ -1,0 +1,6 @@
+node_modules/
+apps/*/node_modules/
+apps/*/vite-dev*.log
+apps/*/vite-dev*.err.log
+apps/*/.vite/
+packages/*/node_modules/
