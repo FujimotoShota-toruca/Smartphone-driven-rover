@@ -9,7 +9,7 @@
 ## 含まれるファイル
 
 - `docs/adr/`  
-  DEC-001〜DEC-018のArchitecture Decision Record
+  DEC-001〜DEC-019のArchitecture Decision Record
 - `docs/requirements/requirements.md`  
   要求分析・要件定義の初版
 - `docs/design/design_doc.md`  
@@ -42,3 +42,4 @@
 - DEC-016: ROS/シミュレータ連携 — ROS/SimulatorはCore本体に組み込まずAdapterとして外出しする。
 - DEC-017: リポジトリ構成 — monorepo + 厳格なpackage境界。Mission Database / Protocol定義を単一正本として管理。
 - DEC-018: Codex投入単位 — Capability単位Issueで投入。安全critical部分はMicro Issue化する。
+- DEC-019: Pico W firmware framework — Pico W firmwareはArduino C++で実装し、arduino-picoを第一候補とする。Safety Kernel、BLE、Protocol、Motor HALを分離し、ハード依存処理はHALに閉じ込める。

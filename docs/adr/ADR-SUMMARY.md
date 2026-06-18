@@ -23,6 +23,7 @@
 | DEC-016 | ROS/シミュレータ連携 | 確定 | ROS/SimulatorはCore本体に組み込まずAdapterとして外出しする。 |
 | DEC-017 | リポジトリ構成 | 確定 | monorepo + 厳格なpackage境界。Mission Database / Protocol定義を単一正本として管理。 |
 | DEC-018 | Codex投入単位 | 確定 | Capability単位Issueで投入。安全critical部分はMicro Issue化する。 |
+| DEC-019 | Pico W firmware framework | 確定 | Pico W firmwareはArduino C++で実装し、arduino-picoを第一候補とする。Safety Kernel、BLE、Protocol、Motor HALを分離し、ハード依存処理はHALに閉じ込める。 |
 
 ## 番号運用ルール
 
