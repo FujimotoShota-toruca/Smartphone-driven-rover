@@ -43,3 +43,25 @@
 - DEC-017: リポジトリ構成 — monorepo + 厳格なpackage境界。Mission Database / Protocol定義を単一正本として管理。
 - DEC-018: Codex投入単位 — Capability単位Issueで投入。安全critical部分はMicro Issue化する。
 - DEC-019: Pico W firmware framework — Pico W firmwareはArduino C++で実装し、arduino-picoを第一候補とする。Safety Kernel、BLE、Protocol、Motor HALを分離し、ハード依存処理はHALに閉じ込める。
+
+## 開発コマンド
+
+Windows PowerShellでは`npm`ではなく`npm.cmd`を使います。
+
+```powershell
+npm.cmd install
+npm.cmd test
+npm.cmd run typecheck
+```
+
+個別packageだけ確認する場合:
+
+```powershell
+cd packages/protocol
+npm.cmd test
+npm.cmd run typecheck
+
+cd ..\mission-db
+npm.cmd test
+npm.cmd run typecheck
+```
