@@ -236,12 +236,38 @@ Advertise-only expected result:
 
 Still not implemented over BLE:
 
-- BLE command payload handling.
-- JSON parser.
+- BLE command action handling.
+- Full JSON parser.
 - `heartbeat` over BLE.
 - `emergency_stop` over BLE.
 - `cmd_vel` over BLE.
 - Real `ack` / `reject` notify payloads.
+
+BLE command write debug check:
+
+1. Connect from the web app with Web Bluetooth.
+2. Press Forward, Stop, or E-stop.
+3. Confirm Arduino IDE Serial Monitor prints lines like:
+
+```text
+BLE command write received bytes=337
+BLE command payload preview={... "msg_type":"cmd_vel" ...}
+BLE command msg_type=cmd_vel
+```
+
+The command write callback copies `valueData()` / `valueLen()` into a fixed
+512-byte debug buffer. Payload preview and `msg_type` classification are then
+printed from the main loop side. Payloads longer than the buffer are truncated
+and marked in the Serial output.
+
+Expected debug classifications:
+
+- Forward / Back / Left / Right / Stop / Neutral: `msg_type=cmd_vel`.
+- E-stop: `msg_type=emergency_stop`.
+- Unknown or unsupported payloads: `msg_type=unknown`.
+
+At this stage, BLE writes are still debug-only. They do not kick heartbeat,
+trigger E-stop, apply `cmd_vel`, or move motors.
 
 ## Hardware Check Notes
 

@@ -25,9 +25,75 @@ BLECharacteristic statusReadCharacteristic(
     BLEUUID(String(BleGattUuids::STATUS_READ_CHARACTERISTIC)), BLERead,
     "Rover Status Read");
 
+static constexpr size_t kCommandWriteBufferSize = 512;
+static constexpr size_t kPayloadPreviewLength = 160;
+
+JsonPacketParser commandDebugParser;
+uint8_t commandWriteBuffer[kCommandWriteBufferSize] = {};
+size_t commandWriteLength = 0;
+size_t commandWriteOriginalLength = 0;
+bool commandWritePending = false;
+bool commandWriteTruncated = false;
+
+void processPendingCommandWriteDebug();
+void printPayloadPreview(const uint8_t* data, size_t length, bool truncated);
+
 void onCommandWrite(BLECharacteristic* characteristic) {
+  const uint8_t* data =
+      reinterpret_cast<const uint8_t*>(characteristic->valueData());
+  const size_t originalLength = characteristic->valueLen();
+  const size_t copyLength = originalLength < kCommandWriteBufferSize
+                                ? originalLength
+                                : kCommandWriteBufferSize;
+
+  if (data != nullptr && copyLength > 0) {
+    memcpy(commandWriteBuffer, data, copyLength);
+  }
+
+  commandWriteLength = copyLength;
+  commandWriteOriginalLength = originalLength;
+  commandWriteTruncated = originalLength > kCommandWriteBufferSize;
+  commandWritePending = true;
+}
+
+void processPendingCommandWriteDebug() {
+  if (!commandWritePending) {
+    return;
+  }
+
+  commandWritePending = false;
+
   Serial.print("BLE command write received bytes=");
-  Serial.println(characteristic->valueLen());
+  Serial.println(commandWriteOriginalLength);
+  Serial.print("BLE command payload preview=");
+  printPayloadPreview(commandWriteBuffer, commandWriteLength, commandWriteTruncated);
+  Serial.print("BLE command msg_type=");
+  Serial.println(
+      commandDebugParser.classifyName(commandWriteBuffer, commandWriteLength));
+}
+
+void printPayloadPreview(const uint8_t* data, size_t length, bool truncated) {
+  const size_t previewLength =
+      length < kPayloadPreviewLength ? length : kPayloadPreviewLength;
+
+  for (size_t index = 0; index < previewLength; index++) {
+    const char value = static_cast<char>(data[index]);
+    if (value == '\r' || value == '\n' || value == '\t') {
+      Serial.print(' ');
+    } else if (value == '\0') {
+      Serial.print("\\0");
+    } else {
+      Serial.print(value);
+    }
+  }
+
+  if (length > previewLength || truncated) {
+    Serial.print("...");
+  }
+  if (truncated) {
+    Serial.print(" [truncated]");
+  }
+  Serial.println();
 }
 
 }  // namespace
@@ -79,7 +145,12 @@ void BleGattTransport::begin() {
 #endif
 }
 
-bool BleGattTransport::poll(RoverPacket& packet) { return readPacket(packet); }
+bool BleGattTransport::poll(RoverPacket& packet) {
+#if defined(ROVER_ENABLE_BLE_GATT)
+  processPendingCommandWriteDebug();
+#endif
+  return readPacket(packet);
+}
 
 bool BleGattTransport::hasPacket() const { return queuedCount_ > 0; }
 
