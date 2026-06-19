@@ -2,6 +2,8 @@
 
 #include "../config/RoverBuildConfig.h"
 
+#include <string.h>
+
 #if defined(ROVER_ENABLE_BLE_GATT)
 #include <BLE.h>
 #endif
@@ -13,6 +15,20 @@ namespace {
 
 BLEService roverControlService(
     BLEUUID(String(BleGattUuids::ROVER_CONTROL_SERVICE)));
+BLECharacteristic commandWriteCharacteristic(
+    BLEUUID(String(BleGattUuids::COMMAND_WRITE_CHARACTERISTIC)), BLEWrite,
+    "Rover Command Write");
+BLECharacteristic telemetryNotifyCharacteristic(
+    BLEUUID(String(BleGattUuids::TELEMETRY_NOTIFY_CHARACTERISTIC)), BLENotify,
+    "Rover Telemetry Notify");
+BLECharacteristic statusReadCharacteristic(
+    BLEUUID(String(BleGattUuids::STATUS_READ_CHARACTERISTIC)), BLERead,
+    "Rover Status Read");
+
+void onCommandWrite(BLECharacteristic* characteristic) {
+  Serial.print("BLE command write received bytes=");
+  Serial.println(characteristic->valueLen());
+}
 
 }  // namespace
 #endif
@@ -32,11 +48,22 @@ void BleGattTransport::begin() {
   }
 
   BLE.begin(String(ROVER_BLE_DEVICE_NAME));
+  commandWriteCharacteristic.onWrite(onCommandWrite);
+  telemetryNotifyCharacteristic.setValue(
+      reinterpret_cast<const uint8_t*>("ble-gatt-skeleton"),
+      strlen("ble-gatt-skeleton"));
+  statusReadCharacteristic.setValue(
+      reinterpret_cast<const uint8_t*>("ble-gatt-skeleton"),
+      strlen("ble-gatt-skeleton"));
+  roverControlService.addCharacteristic(&commandWriteCharacteristic);
+  roverControlService.addCharacteristic(&telemetryNotifyCharacteristic);
+  roverControlService.addCharacteristic(&statusReadCharacteristic);
   BLE.server()->addService(&roverControlService);
   BLE.startAdvertising(true);
 
   if (debugStream_) {
     debugStream_->println("BLE advertising started");
+    debugStream_->println("BLE characteristics registered");
   }
 
   // BLE/BTstack integration belongs in this file only.
@@ -109,8 +136,14 @@ void BleGattTransport::notifyPacket(const RoverPacket& packet, const char* label
     debugStream_->println(packet.seq);
   }
 
-  // Real notifications will encode RoverPacket as UTF-8 JSON and notify the
-  // telemetry characteristic after the BTstack GATT API is selected.
+#if defined(ROVER_ENABLE_BLE_GATT)
+  const char* value = "ble-gatt-skeleton";
+  telemetryNotifyCharacteristic.setValue(
+      reinterpret_cast<const uint8_t*>(value), strlen(value));
+#else
+  (void)packet;
+  (void)label;
+#endif
 }
 
 }  // namespace rover

@@ -175,10 +175,11 @@ The BLE contract follows `docs/design/ble_gatt_contract.md`:
 - Optional Status Read Characteristic UUID:
   `7b5a0003-6f5a-4d1d-9c0a-5b4f8b7a0000`.
 
-The current BLE code is an advertise-only experiment. It registers the rover
-control service UUID and starts advertising as `SmartphoneRover-PicoW`. It does
-not yet implement BLE write handling or telemetry notify payloads. Serial mock
-remains the default bring-up transport.
+The current BLE code is a characteristic skeleton experiment. It registers the
+rover control service UUID, adds command write / telemetry notify / status read
+characteristics, and starts advertising as `SmartphoneRover-PicoW`. It does not
+yet parse command payloads or produce real telemetry. Serial mock remains the
+default bring-up transport.
 
 Arduino IDE requirements:
 
@@ -205,9 +206,21 @@ BTstack notes:
 - The exact GATT API calls are intentionally not written yet until verified
   against the selected arduino-pico version.
 
+Bluetooth LE Explorer check:
+
+1. Connect to `SmartphoneRover-PicoW`.
+2. Confirm custom service UUID
+   `7b5a0000-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+3. Confirm command write characteristic
+   `7b5a0001-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+4. Confirm telemetry notify characteristic
+   `7b5a0002-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+5. Confirm status read characteristic
+   `7b5a0003-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+
 Recommended future BLE bring-up order:
 
-1. Verify advertising and service discovery.
+1. Verify characteristic discovery.
 2. Verify Web app connection.
 3. Verify `heartbeat` write.
 4. Verify `emergency_stop` write and latch behavior.
@@ -223,12 +236,12 @@ Advertise-only expected result:
 
 Still not implemented over BLE:
 
-- BLE write handling.
+- BLE command payload handling.
 - JSON parser.
 - `heartbeat` over BLE.
 - `emergency_stop` over BLE.
 - `cmd_vel` over BLE.
-- `ack` / `reject` notify.
+- Real `ack` / `reject` notify payloads.
 
 ## Hardware Check Notes
 
