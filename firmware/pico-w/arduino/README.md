@@ -10,6 +10,18 @@ schema hash validation, and higher-level planning remain outside the firmware.
 
 ## Build Targets
 
+## Development Policy
+
+Arduino IDE is the primary debug path for Pico W firmware bring-up. Open
+`arduino.ino`, select board and port, set Serial Monitor to `115200` baud with
+line ending `Newline`, and use the Serial mock CUI to check lower I/O.
+
+PlatformIO is the secondary path for reproducibility and CI-style build checks.
+It remains useful, but it is not required for daily hardware debugging.
+
+See [Arduino IDE Debug Workflow](docs/arduino_ide_debug_workflow.md) and
+[Serial Mock CUI Lesson](docs/serial_mock_cui_lesson.md).
+
 ### PlatformIO
 
 The included `platformio.ini` is intended for PlatformIO with the arduino-pico
@@ -219,8 +231,8 @@ press Enter.
 
 Recommended next verification order:
 
-1. PlatformIO Serial mock build.
-2. BLE experimental build.
+1. Arduino IDE Serial mock check.
+2. BLE experimental build check.
 3. BLE advertise.
 4. Web app connection.
 5. `heartbeat`.

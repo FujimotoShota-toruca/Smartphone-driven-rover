@@ -5,6 +5,9 @@ bring-up.
 
 ## Role
 
+Arduino IDE is the primary debug path for this firmware. PlatformIO remains the
+secondary path for reproducibility checks.
+
 Serial mock transport is a debug transport used before BLE GATT is implemented.
 It is not the BLE wire protocol.
 
