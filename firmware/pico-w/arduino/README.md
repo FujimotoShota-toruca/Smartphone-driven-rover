@@ -13,12 +13,22 @@ schema hash validation, and higher-level planning remain outside the firmware.
 ### PlatformIO
 
 The included `platformio.ini` is intended for PlatformIO with the arduino-pico
-core:
+core. The default environment builds the Serial mock firmware with BLE disabled:
 
 ```powershell
 cd firmware/pico-w/arduino
-pio run
+pio run -e pico_w_serial_mock
 ```
+
+The BLE GATT skeleton is separated into an experimental environment:
+
+```powershell
+cd firmware/pico-w/arduino
+pio run -e pico_w_ble_experimental
+```
+
+If PlatformIO is not installed, firmware build verification cannot be completed
+in that environment. The source layout can still be opened from Arduino IDE.
 
 ### Arduino IDE
 
@@ -136,13 +146,11 @@ Arduino IDE requirements:
 PlatformIO requirements:
 
 - Keep `board_build.core = earlephilhower`.
-- Enable Bluetooth explicitly before experimenting with BLE:
-
-```ini
-build_flags =
-  -DPIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH
-  -DROVER_ENABLE_BLE_GATT
-```
+- Use `pio run -e pico_w_serial_mock` for the default Serial mock build.
+- Use `pio run -e pico_w_ble_experimental` only for BLE skeleton experiments.
+- The experimental environment defines
+  `PIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH` and `ROVER_ENABLE_BLE_GATT`.
+- The default Serial mock environment does not define `ROVER_ENABLE_BLE_GATT`.
 
 BTstack notes:
 

@@ -161,3 +161,13 @@ void roverFirmwareLoop() {
   digitalWrite(BoardPins::LED_2, HIGH);
   applyActiveCommand();
 }
+
+#ifdef ROVER_PLATFORMIO_BUILD
+void setup() {
+  roverFirmwareSetup();
+}
+
+void loop() {
+  roverFirmwareLoop();
+}
+#endif
