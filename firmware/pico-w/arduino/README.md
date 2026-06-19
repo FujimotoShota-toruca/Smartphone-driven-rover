@@ -170,3 +170,37 @@ Recommended future BLE bring-up order:
 4. Verify `cmd_vel` write with TTL safety stop.
 
 BLE disconnect must be treated like heartbeat loss and must lead to motor stop.
+
+## Hardware Check Notes
+
+Arduino IDE hardware bring-up has been checked with the Serial mock firmware and
+was broadly successful. Confirmed Serial mock commands:
+
+- `h`: heartbeat.
+- `w`: forward.
+- `s`: reverse.
+- `a`: left turn.
+- `d`: right turn.
+- `x`: stop.
+- `n`: neutral.
+- `e`: emergency stop.
+- `r`: reset E-stop.
+- `?`: print status once.
+- `?00500`: enable periodic status every 500 ms.
+- `?00000`: disable periodic status.
+
+PlatformIO build verification is still a separate item because local PlatformIO
+availability and toolchain setup differ by environment.
+
+The Serial mock transport is a debug transport for lower I/O and safety-kernel
+bring-up before BLE is implemented. It is not the BLE wire protocol.
+
+Recommended next verification order:
+
+1. PlatformIO Serial mock build.
+2. BLE experimental build.
+3. BLE advertise.
+4. Web app connection.
+5. `heartbeat`.
+6. `emergency_stop`.
+7. `cmd_vel`.
