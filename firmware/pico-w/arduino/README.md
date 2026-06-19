@@ -56,9 +56,11 @@ Expected Arduino IDE setup:
 - Sketch folder to open: `firmware/pico-w/arduino`.
 - Primary sketch file: `arduino.ino`.
 - Serial Monitor baud rate: `115200`.
+- Serial Monitor line ending: `Newline`.
 
 After upload, the firmware starts in a stopped state. This is intentional. The
-current mock transport reads one-character commands from Serial Monitor:
+current mock transport reads one line at a time from Serial Monitor. Send each
+command with Enter:
 
 - `h`: heartbeat.
 - `w`: forward `cmd_vel`.
@@ -73,6 +75,19 @@ current mock transport reads one-character commands from Serial Monitor:
 - `?00500`: print status periodically every 500 ms.
 - `?00000`: stop periodic status printing.
 
+Debug aliases combine one heartbeat with one motion command:
+
+- `hw`: heartbeat, then forward.
+- `hs`: heartbeat, then reverse.
+- `ha`: heartbeat, then left turn.
+- `hd`: heartbeat, then right turn.
+- `hx`: heartbeat, then stop.
+- `hn`: heartbeat, then neutral.
+
+Status interval commands must use exactly five digits after `?`. For example,
+use `?01000` for 1000 ms. A shorter form such as `?1000` is rejected so `?` and
+`?NNNNN` do not conflict.
+
 Because heartbeat timeout is enabled, drive commands are only applied while a
 recent `h` heartbeat exists. If no heartbeat is received for the timeout window,
 or if the active `cmd_vel` TTL expires, the firmware returns to `motor.stop()`.
@@ -81,6 +96,9 @@ Periodic status intervals are accepted only from 250 ms to 60000 ms. Status does
 not report measured speed because this firmware skeleton has no wheel encoder or
 IMU feedback. It reports safety state and whether the last `cmd_vel` is fresh or
 expired.
+
+For a step-by-step Serial mock workflow, see
+[Serial Mock CUI Lesson](docs/serial_mock_cui_lesson.md).
 
 ## Current Scope
 
@@ -174,7 +192,8 @@ BLE disconnect must be treated like heartbeat loss and must lead to motor stop.
 ## Hardware Check Notes
 
 Arduino IDE hardware bring-up has been checked with the Serial mock firmware and
-was broadly successful. Confirmed Serial mock commands:
+was broadly successful. Use Serial Monitor with line ending set to `Newline`.
+Confirmed Serial mock commands:
 
 - `h`: heartbeat.
 - `w`: forward.
@@ -188,12 +207,15 @@ was broadly successful. Confirmed Serial mock commands:
 - `?`: print status once.
 - `?00500`: enable periodic status every 500 ms.
 - `?00000`: disable periodic status.
+- `hw`, `hs`, `ha`, `hd`, `hx`, `hn`: heartbeat plus motion debug aliases.
 
 PlatformIO build verification is still a separate item because local PlatformIO
 availability and toolchain setup differ by environment.
 
 The Serial mock transport is a debug transport for lower I/O and safety-kernel
 bring-up before BLE is implemented. It is not the BLE wire protocol.
+PlatformIO device monitor should also be used line-by-line: type one command and
+press Enter.
 
 Recommended next verification order:
 
