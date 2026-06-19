@@ -1,4 +1,9 @@
 export { JsonPacketCodec } from "./JsonPacketCodec";
+export {
+  BLE_GATT_CONTRACT,
+  BLE_GATT_UUIDS,
+  type BleGattUuidName,
+} from "./bleConstants";
 export { CodecError, type PacketCodec } from "./PacketCodec";
 export { PacketEnvelopeValidator } from "./PacketEnvelopeValidator";
 export {
