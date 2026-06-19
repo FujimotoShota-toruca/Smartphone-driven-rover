@@ -35,7 +35,7 @@ size_t commandWriteOriginalLength = 0;
 bool commandWritePending = false;
 bool commandWriteTruncated = false;
 
-void processPendingCommandWriteDebug();
+RoverMessageType processPendingCommandWriteDebug();
 void printPayloadPreview(const uint8_t* data, size_t length, bool truncated);
 
 void onCommandWrite(BLECharacteristic* characteristic) {
@@ -56,20 +56,31 @@ void onCommandWrite(BLECharacteristic* characteristic) {
   commandWritePending = true;
 }
 
-void processPendingCommandWriteDebug() {
+RoverMessageType processPendingCommandWriteDebug() {
   if (!commandWritePending) {
-    return;
+    return RoverMessageType::None;
   }
 
   commandWritePending = false;
+  const RoverMessageType msgType =
+      commandDebugParser.classify(commandWriteBuffer, commandWriteLength);
+  const char* msgTypeName =
+      commandDebugParser.classifyName(commandWriteBuffer, commandWriteLength);
 
   Serial.print("BLE command write received bytes=");
   Serial.println(commandWriteOriginalLength);
   Serial.print("BLE command payload preview=");
   printPayloadPreview(commandWriteBuffer, commandWriteLength, commandWriteTruncated);
   Serial.print("BLE command msg_type=");
-  Serial.println(
-      commandDebugParser.classifyName(commandWriteBuffer, commandWriteLength));
+  Serial.println(msgTypeName);
+
+  if (msgType == RoverMessageType::EmergencyStop) {
+    Serial.println("BLE command handling=handled emergency_stop");
+    return RoverMessageType::EmergencyStop;
+  }
+
+  Serial.println("BLE command handling=ignored debug_only");
+  return RoverMessageType::None;
 }
 
 void printPayloadPreview(const uint8_t* data, size_t length, bool truncated) {
@@ -147,7 +158,12 @@ void BleGattTransport::begin() {
 
 bool BleGattTransport::poll(RoverPacket& packet) {
 #if defined(ROVER_ENABLE_BLE_GATT)
-  processPendingCommandWriteDebug();
+  const RoverMessageType pendingType = processPendingCommandWriteDebug();
+  if (pendingType == RoverMessageType::EmergencyStop) {
+    RoverPacket emergencyStop;
+    emergencyStop.type = RoverMessageType::EmergencyStop;
+    enqueue(emergencyStop);
+  }
 #endif
   return readPacket(packet);
 }

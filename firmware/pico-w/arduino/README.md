@@ -266,8 +266,28 @@ Expected debug classifications:
 - E-stop: `msg_type=emergency_stop`.
 - Unknown or unsupported payloads: `msg_type=unknown`.
 
-At this stage, BLE writes are still debug-only. They do not kick heartbeat,
-trigger E-stop, apply `cmd_vel`, or move motors.
+At this stage, only BLE `emergency_stop` is connected to the firmware safety
+path. It is routed through `PacketHandler`, latches E-stop, and causes the main
+loop to fall back to `motor.stop()`. BLE `cmd_vel` and BLE `heartbeat` are still
+debug-only and ignored by the Safety Kernel.
+
+BLE E-stop check:
+
+1. Connect from the web app with Web Bluetooth.
+2. Press E-stop.
+3. Confirm Arduino IDE Serial Monitor prints:
+
+```text
+BLE command msg_type=emergency_stop
+BLE command handling=handled emergency_stop
+```
+
+4. Send `?` in Serial Monitor and confirm E-stop is latched.
+5. Send `r` in Serial Monitor and confirm the latch can be reset.
+
+BLE motion commands still must not move motors. Forward / Back / Left / Right /
+Stop / Neutral should print `msg_type=cmd_vel` and
+`BLE command handling=ignored debug_only`.
 
 ## Hardware Check Notes
 
