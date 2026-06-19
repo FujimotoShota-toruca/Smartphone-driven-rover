@@ -70,6 +70,17 @@ Expected Arduino IDE setup:
 - Serial Monitor baud rate: `115200`.
 - Serial Monitor line ending: `Newline`.
 
+Serial mock is the default Arduino IDE debug build. For the experimental BLE
+advertise-only build:
+
+1. Enable `Tools -> IP/Bluetooth Stack` with Bluetooth.
+2. Open `src/config/RoverBuildConfig.h`.
+3. Uncomment `#define ROVER_ENABLE_BLE_GATT`.
+4. Upload from Arduino IDE.
+5. Scan from a phone or PC BLE scanner for `SmartphoneRover-PicoW`.
+
+Keep the define commented for normal Serial mock debugging.
+
 After upload, the firmware starts in a stopped state. This is intentional. The
 current mock transport reads one line at a time from Serial Monitor. Send each
 command with Enter:
@@ -164,8 +175,10 @@ The BLE contract follows `docs/design/ble_gatt_contract.md`:
 - Optional Status Read Characteristic UUID:
   `7b5a0003-6f5a-4d1d-9c0a-5b4f8b7a0000`.
 
-The current BLE code is a skeleton. It does not yet register real GATT services
-or characteristics. Serial mock remains the default bring-up transport.
+The current BLE code is an advertise-only experiment. It registers the rover
+control service UUID and starts advertising as `SmartphoneRover-PicoW`. It does
+not yet implement BLE write handling or telemetry notify payloads. Serial mock
+remains the default bring-up transport.
 
 Arduino IDE requirements:
 
@@ -195,11 +208,27 @@ BTstack notes:
 Recommended future BLE bring-up order:
 
 1. Verify advertising and service discovery.
-2. Verify `heartbeat` write.
-3. Verify `emergency_stop` write and latch behavior.
-4. Verify `cmd_vel` write with TTL safety stop.
+2. Verify Web app connection.
+3. Verify `heartbeat` write.
+4. Verify `emergency_stop` write and latch behavior.
+5. Verify `cmd_vel` write with TTL safety stop.
 
 BLE disconnect must be treated like heartbeat loss and must lead to motor stop.
+
+Advertise-only expected result:
+
+- A BLE scanner can see `SmartphoneRover-PicoW`.
+- The advertised service UUID matches
+  `7b5a0000-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+
+Still not implemented over BLE:
+
+- BLE write handling.
+- JSON parser.
+- `heartbeat` over BLE.
+- `emergency_stop` over BLE.
+- `cmd_vel` over BLE.
+- `ack` / `reject` notify.
 
 ## Hardware Check Notes
 

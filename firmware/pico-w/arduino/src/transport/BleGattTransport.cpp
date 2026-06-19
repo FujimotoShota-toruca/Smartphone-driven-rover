@@ -1,6 +1,21 @@
 #include "BleGattTransport.h"
 
+#include "../config/RoverBuildConfig.h"
+
+#if defined(ROVER_ENABLE_BLE_GATT)
+#include <BLE.h>
+#endif
+
 namespace rover {
+
+#if defined(ROVER_ENABLE_BLE_GATT)
+namespace {
+
+BLEService roverControlService(
+    BLEUUID(String(BleGattUuids::ROVER_CONTROL_SERVICE)));
+
+}  // namespace
+#endif
 
 BleGattTransport::BleGattTransport(Stream* debugStream)
     : debugStream_(debugStream) {}
@@ -9,23 +24,26 @@ void BleGattTransport::begin() {
 #if defined(ROVER_ENABLE_BLE_GATT)
   enabled_ = true;
   if (debugStream_) {
-    debugStream_->println("BLE GATT skeleton enabled");
+    debugStream_->println("BLE advertise-only experiment enabled");
+    debugStream_->print("name=");
+    debugStream_->println(ROVER_BLE_DEVICE_NAME);
     debugStream_->print("service=");
     debugStream_->println(BleGattUuids::ROVER_CONTROL_SERVICE);
   }
 
-  // BTstack integration belongs in this file only.
+  BLE.begin(String(ROVER_BLE_DEVICE_NAME));
+  BLE.server()->addService(&roverControlService);
+  BLE.startAdvertising(true);
+
+  if (debugStream_) {
+    debugStream_->println("BLE advertising started");
+  }
+
+  // BLE/BTstack integration belongs in this file only.
   //
   // arduino-pico requires Bluetooth to be enabled in the board build settings.
-  // BTstack calls must be protected by BluetoothLock, for example:
-  //
-  //   {
-  //     BluetoothLock lock;
-  //     ... BTstack API calls ...
-  //   }
-  //
-  // The exact GATT server API is intentionally not called here until verified
-  // against the selected arduino-pico version.
+  // This advertise-only step uses the arduino-pico BLE wrapper API. Future
+  // direct BTstack calls must be protected by BluetoothLock and kept here.
 #else
   enabled_ = false;
   if (debugStream_) {
