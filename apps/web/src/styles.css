@@ -15,7 +15,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -106,6 +107,30 @@ input {
   border-radius: 6px;
   padding: 8px 10px;
   background: #ffffff;
+}
+
+select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #aab6bf;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #ffffff;
+}
+
+.transportPanel {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 12px;
+  align-items: end;
+  padding: 14px 0 4px;
+}
+
+.transportNotice {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+  color: #6f3f00;
 }
 
 .manualPanel {
@@ -223,6 +248,7 @@ pre {
 
 @media (max-width: 760px) {
   .topBar,
+  .transportPanel,
   .identityPanel,
   .detailsGrid {
     grid-template-columns: 1fr;

@@ -16,12 +16,17 @@ import type {
 import { createCmdVelPacket } from "./packet/createCmdVelPacket";
 import { createEmergencyStopPacket } from "./packet/createEmergencyStopPacket";
 import { MockRoverTransport } from "./transport/MockRoverTransport";
+import type { RoverTransport } from "./transport/RoverTransport";
+import { isWebBluetoothAvailable } from "./transport/BluetoothAvailability";
+import { WebBluetoothTransport } from "./transport/WebBluetoothTransport";
 
 interface LogEntry {
   id: number;
   status: "sent" | "rejected" | "system";
   message: string;
 }
+
+type TransportMode = "mock" | "web_bluetooth";
 
 const schema: MissionDbHashes = {
   core_protocol_hash: "mock-core-v1",
@@ -74,8 +79,10 @@ const registry = new CommandRegistry({
 });
 
 export function App() {
-  const transportRef = useRef(new MockRoverTransport());
+  const transportRef = useRef<RoverTransport>(new MockRoverTransport());
   const seqRef = useRef(1);
+  const bluetoothAvailable = useMemo(() => isWebBluetoothAvailable(), []);
+  const [transportMode, setTransportMode] = useState<TransportMode>("mock");
   const [missionId, setMissionId] = useState("engineering_rover_demo");
   const [roverId, setRoverId] = useState("rover_01");
   const [connected, setConnected] = useState(false);
@@ -98,13 +105,29 @@ export function App() {
   async function connect() {
     await transportRef.current.connect();
     setConnected(true);
-    appendLog("system", "MockTransport connected");
+    appendLog("system", `${transportLabel(transportMode)} connected`);
   }
 
   async function disconnect() {
     await transportRef.current.disconnect();
     setConnected(false);
-    appendLog("system", "MockTransport disconnected");
+    appendLog("system", `${transportLabel(transportMode)} disconnected`);
+  }
+
+  async function changeTransportMode(mode: TransportMode) {
+    if (mode === transportMode) {
+      return;
+    }
+
+    if (connected) {
+      await transportRef.current.disconnect();
+      setConnected(false);
+    }
+
+    transportRef.current =
+      mode === "web_bluetooth" ? new WebBluetoothTransport() : new MockRoverTransport();
+    setTransportMode(mode);
+    appendLog("system", `Transport mode: ${transportLabel(mode)}`);
   }
 
   async function authorizeAndSend(packet: RoverPacket) {
@@ -184,6 +207,28 @@ export function App() {
             Disconnect
           </button>
         </div>
+      </section>
+
+      <section className="transportPanel" aria-label="Transport mode">
+        <label>
+          Transport
+          <select
+            value={transportMode}
+            onChange={(event) => {
+              void changeTransportMode(event.target.value as TransportMode);
+            }}
+          >
+            <option value="mock">Mock</option>
+            <option value="web_bluetooth" disabled={!bluetoothAvailable}>
+              Web Bluetooth
+            </option>
+          </select>
+        </label>
+        {!bluetoothAvailable && (
+          <p className="transportNotice">
+            Web Bluetooth is not available in this browser. Use Mock mode.
+          </p>
+        )}
       </section>
 
       <section className="identityPanel" aria-label="Rover identity">
@@ -272,4 +317,8 @@ export function App() {
       </section>
     </main>
   );
+}
+
+function transportLabel(mode: TransportMode): string {
+  return mode === "web_bluetooth" ? "Web Bluetooth" : "MockTransport";
 }
