@@ -84,10 +84,12 @@ Implemented as skeleton modules:
   - Heartbeat timeout.
   - `cmd_vel` TTL guard.
 - Transport interface and a Serial-backed mock transport.
+- BLE GATT Peripheral transport skeleton behind a compile-time flag.
+- Packet handler boundary between transports and safety / motor actions.
 
 Not implemented yet:
 
-- BLE GATT Peripheral.
+- Complete BLE GATT Peripheral.
 - JSON packet parser.
 - Mission Profile authorization.
 - Schema hash verification.
@@ -109,3 +111,54 @@ upper layers are unavailable. In this skeleton:
 Future BLE GATT support should live behind `RoverTransport`, replacing or
 coexisting with the current mock transport without changing the safety kernel
 or motor HAL responsibilities.
+
+## BLE GATT Skeleton
+
+The BLE contract follows `docs/design/ble_gatt_contract.md`:
+
+- Service UUID: `7b5a0000-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+- Command Write Characteristic UUID:
+  `7b5a0001-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+- Telemetry Notify Characteristic UUID:
+  `7b5a0002-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+- Optional Status Read Characteristic UUID:
+  `7b5a0003-6f5a-4d1d-9c0a-5b4f8b7a0000`.
+
+The current BLE code is a skeleton. It does not yet register real GATT services
+or characteristics. Serial mock remains the default bring-up transport.
+
+Arduino IDE requirements:
+
+- Use arduino-pico for Pico W.
+- Enable Bluetooth in `Tools -> IP/Bluetooth Stack`.
+- Keep using `firmware/pico-w/arduino` as the sketch folder.
+
+PlatformIO requirements:
+
+- Keep `board_build.core = earlephilhower`.
+- Enable Bluetooth explicitly before experimenting with BLE:
+
+```ini
+build_flags =
+  -DPIO_FRAMEWORK_ARDUINO_ENABLE_BLUETOOTH
+  -DROVER_ENABLE_BLE_GATT
+```
+
+BTstack notes:
+
+- BTstack calls must stay inside `src/transport/BleGattTransport.cpp`.
+- arduino-pico requires the BT `async_context` system lock before BTstack API
+  calls. Use `BluetoothLock` around direct BTstack calls.
+- Do not call `cyw43_arch_init()` from this firmware; arduino-pico handles Pico W
+  variant boot initialization.
+- The exact GATT API calls are intentionally not written yet until verified
+  against the selected arduino-pico version.
+
+Recommended future BLE bring-up order:
+
+1. Verify advertising and service discovery.
+2. Verify `heartbeat` write.
+3. Verify `emergency_stop` write and latch behavior.
+4. Verify `cmd_vel` write with TTL safety stop.
+
+BLE disconnect must be treated like heartbeat loss and must lead to motor stop.

@@ -4,9 +4,11 @@
 #include "board/BoardPins.h"
 #include "control/DifferentialDriveMixer.h"
 #include "hal/Tb67hMotorDriver.h"
+#include "protocol/PacketHandler.h"
 #include "safety/CommandTtlGuard.h"
 #include "safety/EstopLatch.h"
 #include "safety/HeartbeatWatchdog.h"
+#include "transport/BleGattTransport.h"
 #include "transport/MockTransport.h"
 
 namespace {
@@ -25,55 +27,33 @@ EstopLatch estopLatch;
 HeartbeatWatchdog heartbeatWatchdog(kHeartbeatTimeoutMs);
 CommandTtlGuard commandTtlGuard;
 MockTransport transport(Serial);
+BleGattTransport bleTransport(&Serial);
 
 CmdVel activeCmdVel;
 uint32_t activeCmdReceivedAtMs = 0;
 bool hasActiveCmdVel = false;
 uint32_t statusIntervalMs = 0;
 uint32_t nextStatusAtMs = 0;
+PacketHandler packetHandler(
+    PacketHandlerState{activeCmdVel, activeCmdReceivedAtMs, hasActiveCmdVel,
+                       statusIntervalMs, nextStatusAtMs},
+    PacketHandlerLimits{kMinStatusIntervalMs, kMaxStatusIntervalMs}, estopLatch,
+    heartbeatWatchdog, motor, &Serial);
 
-void handlePacket(const RoverPacket& packet, uint32_t nowMs) {
-  switch (packet.type) {
-    case RoverMessageType::CmdVel:
-      activeCmdVel = packet.cmdVel;
-      activeCmdReceivedAtMs = nowMs;
-      hasActiveCmdVel = true;
-      break;
-    case RoverMessageType::EmergencyStop:
-      estopLatch.trigger();
-      break;
-    case RoverMessageType::Heartbeat:
-      heartbeatWatchdog.markHeartbeat(nowMs);
-      break;
-    case RoverMessageType::ResetEstop:
-      estopLatch.clear();
-      motor.stop();
-      break;
-    case RoverMessageType::PrintStatus:
-      nextStatusAtMs = nowMs;
-      break;
-    case RoverMessageType::SetStatusInterval:
-      if (packet.statusIntervalMs == 0) {
-        statusIntervalMs = 0;
-        nextStatusAtMs = 0;
-        Serial.println("status periodic off");
-      } else if (packet.statusIntervalMs < kMinStatusIntervalMs ||
-                 packet.statusIntervalMs > kMaxStatusIntervalMs) {
-        Serial.print("status interval rejected ms=");
-        Serial.print(packet.statusIntervalMs);
-        Serial.print(" allowed=");
-        Serial.print(kMinStatusIntervalMs);
-        Serial.print("..");
-        Serial.println(kMaxStatusIntervalMs);
-      } else {
-        statusIntervalMs = packet.statusIntervalMs;
-        nextStatusAtMs = nowMs;
-        Serial.print("status periodic ms=");
-        Serial.println(statusIntervalMs);
-      }
-      break;
-    case RoverMessageType::None:
-      break;
+void processTransport(RoverTransport& packetTransport, uint32_t nowMs,
+                      BleGattTransport* responseTransport = nullptr) {
+  RoverPacket packet;
+  while (packetTransport.poll(packet)) {
+    const PacketHandleResult result = packetHandler.handle(packet, nowMs);
+    if (responseTransport == nullptr || !result.ackRequired) {
+      continue;
+    }
+
+    if (result.accepted) {
+      responseTransport->sendAck(result.response);
+    } else {
+      responseTransport->sendReject(result.response, result.reason);
+    }
   }
 }
 
@@ -158,15 +138,14 @@ void roverFirmwareSetup() {
   motor.stop();
   heartbeatWatchdog.begin(millis());
   transport.begin();
+  bleTransport.begin();
 }
 
 void roverFirmwareLoop() {
   const uint32_t nowMs = millis();
 
-  RoverPacket packet;
-  while (transport.poll(packet)) {
-    handlePacket(packet, nowMs);
-  }
+  processTransport(transport, nowMs);
+  processTransport(bleTransport, nowMs, &bleTransport);
 
   const bool safetyStop = safetyStopRequired(nowMs);
   maybePrintStatus(nowMs, safetyStop);

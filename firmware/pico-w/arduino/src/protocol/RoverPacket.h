@@ -14,6 +14,10 @@ enum class RoverMessageType {
   ResetEstop,
   PrintStatus,
   SetStatusInterval,
+  Ack,
+  Reject,
+  PicoHk,
+  SafetyState,
 };
 
 struct RoverPacket {
@@ -21,6 +25,8 @@ struct RoverPacket {
   uint32_t seq = 0;
   CmdVel cmdVel;
   uint32_t statusIntervalMs = 0;
+  uint32_t relatedSeq = 0;
+  const char* reason = "";
 };
 
 }  // namespace rover
