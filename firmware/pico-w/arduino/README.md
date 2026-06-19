@@ -236,11 +236,9 @@ Advertise-only expected result:
 
 Still not implemented over BLE:
 
-- BLE command action handling.
 - Full JSON parser.
-- `heartbeat` over BLE.
-- `emergency_stop` over BLE.
-- `cmd_vel` over BLE.
+- Mission Profile authorization.
+- Schema hash verification.
 - Real `ack` / `reject` notify payloads.
 
 BLE command write debug check:
@@ -266,10 +264,30 @@ Expected debug classifications:
 - E-stop: `msg_type=emergency_stop`.
 - Unknown or unsupported payloads: `msg_type=unknown`.
 
-At this stage, only BLE `emergency_stop` is connected to the firmware safety
-path. It is routed through `PacketHandler`, latches E-stop, and causes the main
-loop to fall back to `motor.stop()`. BLE `cmd_vel` and BLE `heartbeat` are still
-debug-only and ignored by the Safety Kernel.
+At this stage, BLE `emergency_stop`, BLE `heartbeat`, and a limited BLE
+`cmd_vel` path are connected to the firmware safety path through
+`PacketHandler`. `emergency_stop` latches E-stop and causes the main loop to
+fall back to `motor.stop()`. `heartbeat` kicks the existing
+`HeartbeatWatchdog`. For Lv1 manual drive, BLE `cmd_vel` is treated as an
+open-loop normalized drive command, not as a measured physical velocity. Wheel
+encoders, speed estimation, and closed-loop control are future work. The Lv1
+goal is simple: press to drive, release to stop, E-stop to stop immediately.
+
+BLE `cmd_vel` is accepted only when E-stop is clear, heartbeat is fresh,
+`ttl_ms` is within the firmware limit, and the payload is inside the temporary
+firmware limits:
+
+- `abs(vx) <= 1.0`
+- `abs(wz) <= 1.0`
+- `0 < ttl_ms <= 500`
+
+The current web manual drive commands use normalized values:
+
+- Forward: `vx=1.0`, `wz=0.0`, `brake=false`.
+- Back: `vx=-1.0`, `wz=0.0`, `brake=false`.
+- Left: `vx=0.0`, `wz=-1.0`, `brake=false`.
+- Right: `vx=0.0`, `wz=1.0`, `brake=false`.
+- Stop / Neutral / release stop: `vx=0.0`, `wz=0.0`, `brake=true`.
 
 BLE E-stop check:
 
@@ -285,9 +303,53 @@ BLE command handling=handled emergency_stop
 4. Send `?` in Serial Monitor and confirm E-stop is latched.
 5. Send `r` in Serial Monitor and confirm the latch can be reset.
 
-BLE motion commands still must not move motors. Forward / Back / Left / Right /
-Stop / Neutral should print `msg_type=cmd_vel` and
-`BLE command handling=ignored debug_only`.
+BLE motion command check:
+
+1. Lift the rover wheels or put the rover in a safe free-spinning setup.
+2. Connect from the web app with Web Bluetooth.
+3. Confirm heartbeat is being handled periodically.
+4. Send `?` from Serial Monitor and confirm heartbeat is `ok`.
+5. Press and hold Forward and confirm both wheels rotate in the forward
+   direction.
+6. Press and hold Back and confirm both wheels rotate in the reverse direction.
+7. Press Left / Right and confirm the wheels rotate in opposite directions.
+8. Release the button and confirm a stop/brake `cmd_vel` is sent and output
+   stops.
+9. Press E-stop and confirm the motors stop and status shows `estop=latched`.
+10. While E-stop is latched, confirm Forward does not move the motors.
+11. Send `r` from Serial mock to clear E-stop.
+12. Disconnect the web app and confirm heartbeat timeout returns the firmware
+    to safety stop.
+
+The expected `cmd_vel` diagnostic line includes handling result, reject reason,
+sequence, payload, mixed motor command, and safety state:
+
+```text
+cmd_vel diagnostic handling=handled reason=cmd_vel accepted seq=42 vx=1.000 wz=0.000 brake=false ttl_ms=300 left=1.000 right=1.000 estop=clear heartbeat=ok cmd=active
+```
+
+If a command is rejected, the reason should be visible. Common reasons include
+`missing_vx`, `missing_wz`, `invalid_number`, `ttl_out_of_range`, `vx_limit`,
+`wz_limit`, `estop_latched`, `heartbeat_timeout`, and `truncated_payload`.
+
+The BLE `cmd_vel` parser is intentionally limited. It is not a full JSON parser
+and does not implement Mission Profile authorization or schema hash checks in
+firmware.
+
+BLE heartbeat check:
+
+1. Connect from the web app with Web Bluetooth.
+2. Confirm Arduino IDE Serial Monitor periodically prints:
+
+```text
+BLE command msg_type=heartbeat
+BLE command handling=handled heartbeat
+```
+
+3. Send `?` in Serial Monitor and confirm heartbeat is `ok`.
+4. Disconnect the web app or stop the page.
+5. Wait for the watchdog timeout and send `?` again. Heartbeat should return to
+   `timeout` and the main loop should be in safety stop.
 
 ## Hardware Check Notes
 

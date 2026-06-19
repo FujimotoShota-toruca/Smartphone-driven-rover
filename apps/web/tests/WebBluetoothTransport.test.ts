@@ -102,6 +102,41 @@ describe("WebBluetoothTransport", () => {
     const writtenValue = vi.mocked(commandWrite.writeValue).mock.calls[0][0];
     expect(new Uint8Array(writtenValue as ArrayBuffer)).toEqual(encoded);
   });
+
+  it("serializes concurrent GATT writes", async () => {
+    const pendingWrites: Array<() => void> = [];
+    let activeWrites = 0;
+    let maxActiveWrites = 0;
+    const commandWrite = createCharacteristic();
+    vi.mocked(commandWrite.writeValue).mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          activeWrites += 1;
+          maxActiveWrites = Math.max(maxActiveWrites, activeWrites);
+          pendingWrites.push(() => {
+            activeWrites -= 1;
+            resolve();
+          });
+        }),
+    );
+    const transport = await createConnectedTransport(commandWrite);
+
+    const firstSend = transport.send(packet);
+    const secondSend = transport.send({ ...packet, seq: 2 });
+
+    await Promise.resolve();
+    expect(commandWrite.writeValue).toHaveBeenCalledTimes(1);
+    expect(maxActiveWrites).toBe(1);
+
+    pendingWrites.shift()?.();
+    await expect(firstSend).resolves.toBeUndefined();
+    expect(commandWrite.writeValue).toHaveBeenCalledTimes(2);
+    expect(maxActiveWrites).toBe(1);
+
+    pendingWrites.shift()?.();
+    await expect(secondSend).resolves.toBeUndefined();
+    expect(maxActiveWrites).toBe(1);
+  });
 });
 
 function createCharacteristic(): BluetoothRemoteGattCharacteristicLike {
@@ -110,4 +145,36 @@ function createCharacteristic(): BluetoothRemoteGattCharacteristicLike {
     startNotifications: vi.fn(async () => characteristic),
   };
   return characteristic;
+}
+
+async function createConnectedTransport(
+  commandWrite: BluetoothRemoteGattCharacteristicLike,
+): Promise<WebBluetoothTransport> {
+  const telemetryNotify = createCharacteristic();
+  const statusRead = createCharacteristic();
+  const getCharacteristic = vi.fn(async (uuid: string) => {
+    if (uuid === BLE_GATT_UUIDS.commandWriteCharacteristic) {
+      return commandWrite;
+    }
+    if (uuid === BLE_GATT_UUIDS.telemetryNotifyCharacteristic) {
+      return telemetryNotify;
+    }
+    if (uuid === BLE_GATT_UUIDS.statusReadCharacteristic) {
+      return statusRead;
+    }
+    throw new Error(`Unexpected characteristic ${uuid}`);
+  });
+  const server = {
+    connected: true,
+    connect: vi.fn(),
+    disconnect: vi.fn(),
+    getPrimaryService: vi.fn(async () => ({ getCharacteristic })),
+  };
+  server.connect.mockResolvedValue(server);
+  const bluetooth: BluetoothApi = {
+    requestDevice: vi.fn(async () => ({ gatt: server })),
+  };
+  const transport = new WebBluetoothTransport({ navigatorLike: { bluetooth } });
+  await transport.connect();
+  return transport;
 }

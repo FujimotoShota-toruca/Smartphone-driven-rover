@@ -45,6 +45,37 @@ void processTransport(RoverTransport& packetTransport, uint32_t nowMs,
   RoverPacket packet;
   while (packetTransport.poll(packet)) {
     const PacketHandleResult result = packetHandler.handle(packet, nowMs);
+    if (packet.type == RoverMessageType::CmdVel) {
+      const bool ttlExpired =
+          hasActiveCmdVel &&
+          commandTtlGuard.isExpired(activeCmdReceivedAtMs, activeCmdVel.ttlMs,
+                                    nowMs);
+      const MotorCommand mixed = mixer.mix(packet.cmdVel);
+      Serial.print("cmd_vel diagnostic handling=");
+      Serial.print(result.accepted ? "handled" : "rejected");
+      Serial.print(" reason=");
+      Serial.print(result.reason);
+      Serial.print(" seq=");
+      Serial.print(packet.seq);
+      Serial.print(" vx=");
+      Serial.print(packet.cmdVel.vx, 3);
+      Serial.print(" wz=");
+      Serial.print(packet.cmdVel.wz, 3);
+      Serial.print(" brake=");
+      Serial.print(packet.cmdVel.brake ? "true" : "false");
+      Serial.print(" ttl_ms=");
+      Serial.print(packet.cmdVel.ttlMs);
+      Serial.print(" left=");
+      Serial.print(mixed.left, 3);
+      Serial.print(" right=");
+      Serial.print(mixed.right, 3);
+      Serial.print(" estop=");
+      Serial.print(estopLatch.isLatched() ? "latched" : "clear");
+      Serial.print(" heartbeat=");
+      Serial.print(heartbeatWatchdog.isTimedOut(nowMs) ? "timeout" : "ok");
+      Serial.print(" cmd=");
+      Serial.println(!hasActiveCmdVel ? "inactive" : (ttlExpired ? "expired" : "active"));
+    }
     if (responseTransport == nullptr || !result.ackRequired) {
       continue;
     }

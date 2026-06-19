@@ -17,17 +17,29 @@ PacketHandleResult PacketHandler::handle(const RoverPacket& packet,
                                          uint32_t nowMs) {
   switch (packet.type) {
     case RoverMessageType::CmdVel:
+      if (estopLatch_.isLatched()) {
+        state_.hasActiveCmdVel = false;
+        motor_.stop();
+        return reject(packet, "estop_latched");
+      }
+      if (heartbeatWatchdog_.isTimedOut(nowMs)) {
+        state_.hasActiveCmdVel = false;
+        motor_.stop();
+        return reject(packet, "heartbeat_timeout");
+      }
       state_.activeCmdVel = packet.cmdVel;
       state_.activeCmdReceivedAtMs = nowMs;
       state_.hasActiveCmdVel = true;
       return accept(packet, "cmd_vel accepted");
     case RoverMessageType::EmergencyStop:
+      state_.hasActiveCmdVel = false;
       estopLatch_.trigger();
       return accept(packet, "emergency_stop latched");
     case RoverMessageType::Heartbeat:
       heartbeatWatchdog_.markHeartbeat(nowMs);
       return accept(packet, "heartbeat accepted");
     case RoverMessageType::ResetEstop:
+      state_.hasActiveCmdVel = false;
       estopLatch_.clear();
       motor_.stop();
       return accept(packet, "reset_estop accepted");

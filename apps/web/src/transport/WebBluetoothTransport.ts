@@ -54,6 +54,8 @@ export class WebBluetoothTransport implements RoverTransport {
   #commandWriteCharacteristic: BluetoothRemoteGattCharacteristicLike | null = null;
   #telemetryNotifyCharacteristic: BluetoothRemoteGattCharacteristicLike | null = null;
   #statusReadCharacteristic: BluetoothRemoteGattCharacteristicLike | null = null;
+  #writeChain: Promise<void> = Promise.resolve();
+  #writeInProgress = false;
 
   public constructor(options: WebBluetoothTransportOptions = {}) {
     this.#navigatorLike = options.navigatorLike;
@@ -102,6 +104,8 @@ export class WebBluetoothTransport implements RoverTransport {
     this.#commandWriteCharacteristic = null;
     this.#telemetryNotifyCharacteristic = null;
     this.#statusReadCharacteristic = null;
+    this.#writeChain = Promise.resolve();
+    this.#writeInProgress = false;
   }
 
   public async send(packet: RoverPacket): Promise<void> {
@@ -112,11 +116,30 @@ export class WebBluetoothTransport implements RoverTransport {
     const bytes = this.#codec.encode(packet);
     const payload = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(payload).set(bytes);
-    await this.#commandWriteCharacteristic.writeValue(payload);
+    const characteristic = this.#commandWriteCharacteristic;
+    const write = this.#writeChain.then(async () => {
+      if (!this.isConnected() || this.#commandWriteCharacteristic !== characteristic) {
+        throw new Error("WebBluetoothTransport is not connected");
+      }
+
+      this.#writeInProgress = true;
+      try {
+        await characteristic.writeValue(payload);
+      } finally {
+        this.#writeInProgress = false;
+      }
+    });
+
+    this.#writeChain = write.catch(() => undefined);
+    await write;
   }
 
   public isConnected(): boolean {
     return Boolean(this.#server?.connected && this.#commandWriteCharacteristic);
+  }
+
+  public isWriteInProgress(): boolean {
+    return this.#writeInProgress;
   }
 
   async #getOptionalStatusCharacteristic(

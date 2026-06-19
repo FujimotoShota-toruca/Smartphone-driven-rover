@@ -154,6 +154,8 @@ select {
 .driveButton {
   min-height: 84px;
   font-weight: 800;
+  touch-action: none;
+  user-select: none;
 }
 
 .driveButton.forward {

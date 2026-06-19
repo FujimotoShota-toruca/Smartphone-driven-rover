@@ -26,6 +26,7 @@ BLECharacteristic statusReadCharacteristic(
     "Rover Status Read");
 
 static constexpr size_t kCommandWriteBufferSize = 512;
+static constexpr size_t kCommandWritePayloadMaxLength = kCommandWriteBufferSize - 1;
 static constexpr size_t kPayloadPreviewLength = 160;
 
 JsonPacketParser commandDebugParser;
@@ -34,31 +35,35 @@ size_t commandWriteLength = 0;
 size_t commandWriteOriginalLength = 0;
 bool commandWritePending = false;
 bool commandWriteTruncated = false;
+uint32_t lastHeartbeatLogAtMs = 0;
 
-RoverMessageType processPendingCommandWriteDebug();
+bool processPendingCommandWriteDebug(RoverPacket& packet);
 void printPayloadPreview(const uint8_t* data, size_t length, bool truncated);
 
 void onCommandWrite(BLECharacteristic* characteristic) {
   const uint8_t* data =
       reinterpret_cast<const uint8_t*>(characteristic->valueData());
   const size_t originalLength = characteristic->valueLen();
-  const size_t copyLength = originalLength < kCommandWriteBufferSize
-                                ? originalLength
-                                : kCommandWriteBufferSize;
+  const size_t copyLength =
+      data == nullptr ? 0
+                      : (originalLength < kCommandWritePayloadMaxLength
+                             ? originalLength
+                             : kCommandWritePayloadMaxLength);
 
   if (data != nullptr && copyLength > 0) {
     memcpy(commandWriteBuffer, data, copyLength);
   }
+  commandWriteBuffer[copyLength] = '\0';
 
   commandWriteLength = copyLength;
   commandWriteOriginalLength = originalLength;
-  commandWriteTruncated = originalLength > kCommandWriteBufferSize;
+  commandWriteTruncated = originalLength > kCommandWritePayloadMaxLength;
   commandWritePending = true;
 }
 
-RoverMessageType processPendingCommandWriteDebug() {
+bool processPendingCommandWriteDebug(RoverPacket& packet) {
   if (!commandWritePending) {
-    return RoverMessageType::None;
+    return false;
   }
 
   commandWritePending = false;
@@ -67,6 +72,23 @@ RoverMessageType processPendingCommandWriteDebug() {
   const char* msgTypeName =
       commandDebugParser.classifyName(commandWriteBuffer, commandWriteLength);
 
+  if (msgType == RoverMessageType::Heartbeat && !commandWriteTruncated) {
+    if (!commandDebugParser.parse(commandWriteBuffer, commandWriteLength, packet)) {
+      Serial.print("BLE command handling=rejected ");
+      const char* reason = commandDebugParser.lastError();
+      Serial.println(reason[0] == '\0' ? "invalid_json_debug_parser" : reason);
+      return false;
+    }
+
+    const uint32_t nowMs = millis();
+    if (nowMs - lastHeartbeatLogAtMs >= 1000) {
+      lastHeartbeatLogAtMs = nowMs;
+      Serial.println("BLE command msg_type=heartbeat");
+      Serial.println("BLE command handling=handled heartbeat");
+    }
+    return true;
+  }
+
   Serial.print("BLE command write received bytes=");
   Serial.println(commandWriteOriginalLength);
   Serial.print("BLE command payload preview=");
@@ -74,13 +96,42 @@ RoverMessageType processPendingCommandWriteDebug() {
   Serial.print("BLE command msg_type=");
   Serial.println(msgTypeName);
 
+  if (commandWriteTruncated) {
+    Serial.println("BLE command handling=rejected truncated_payload");
+    return false;
+  }
+
+  if (!commandDebugParser.parse(commandWriteBuffer, commandWriteLength, packet)) {
+    Serial.print("BLE command handling=rejected ");
+    const char* reason = commandDebugParser.lastError();
+    Serial.println(reason[0] == '\0' ? "invalid_json_debug_parser" : reason);
+    return false;
+  }
+
   if (msgType == RoverMessageType::EmergencyStop) {
     Serial.println("BLE command handling=handled emergency_stop");
-    return RoverMessageType::EmergencyStop;
+    return true;
+  }
+  if (msgType == RoverMessageType::Heartbeat) {
+    Serial.println("BLE command handling=handled heartbeat");
+    return true;
+  }
+  if (msgType == RoverMessageType::CmdVel) {
+    Serial.print("BLE command handling=handled cmd_vel vx=");
+    Serial.print(packet.cmdVel.vx, 3);
+    Serial.print(" wz=");
+    Serial.print(packet.cmdVel.wz, 3);
+    Serial.print(" brake=");
+    Serial.print(packet.cmdVel.brake ? "true" : "false");
+    Serial.print(" ttl_ms=");
+    Serial.print(packet.cmdVel.ttlMs);
+    Serial.print(" seq=");
+    Serial.println(packet.seq);
+    return true;
   }
 
   Serial.println("BLE command handling=ignored debug_only");
-  return RoverMessageType::None;
+  return false;
 }
 
 void printPayloadPreview(const uint8_t* data, size_t length, bool truncated) {
@@ -158,11 +209,11 @@ void BleGattTransport::begin() {
 
 bool BleGattTransport::poll(RoverPacket& packet) {
 #if defined(ROVER_ENABLE_BLE_GATT)
-  const RoverMessageType pendingType = processPendingCommandWriteDebug();
-  if (pendingType == RoverMessageType::EmergencyStop) {
-    RoverPacket emergencyStop;
-    emergencyStop.type = RoverMessageType::EmergencyStop;
-    enqueue(emergencyStop);
+  RoverPacket pendingPacket;
+  if (processPendingCommandWriteDebug(pendingPacket)) {
+    if (!enqueue(pendingPacket) && debugStream_) {
+      debugStream_->println("BLE command handling=rejected queue_full");
+    }
   }
 #endif
   return readPacket(packet);

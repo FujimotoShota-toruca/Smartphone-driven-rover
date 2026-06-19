@@ -1,5 +1,5 @@
-import { useMemo, useRef, useState } from "react";
-import type { RoverPacket } from "@smartphone-rover/protocol";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { BLE_GATT_CONTRACT, type RoverPacket } from "@smartphone-rover/protocol";
 import {
   CommandAuthorizationPipeline,
 } from "@smartphone-rover/mission-db/CommandAuthorizationPipeline";
@@ -13,8 +13,12 @@ import type {
   MissionDbHashes,
 } from "@smartphone-rover/mission-db/types";
 
+import { sendHeartbeatIfIdle } from "./heartbeat/HeartbeatScheduler";
+import { ManualCommandRepeater, type ManualCommand } from "./manual/ManualCommandRepeater";
+import { manualDriveCommands } from "./manual/manualDriveCommands";
 import { createCmdVelPacket } from "./packet/createCmdVelPacket";
 import { createEmergencyStopPacket } from "./packet/createEmergencyStopPacket";
+import { createHeartbeatPacket } from "./packet/createHeartbeatPacket";
 import { MockRoverTransport } from "./transport/MockRoverTransport";
 import type { RoverTransport } from "./transport/RoverTransport";
 import { isWebBluetoothAvailable } from "./transport/BluetoothAvailability";
@@ -66,8 +70,8 @@ const safetyPolicy: SafetyDefinition = {
     estop: { enabled: true, latch: true },
   },
   policy_defaults: {
-    max_vx: 0.5,
-    max_wz: 2.0,
+    max_vx: 1.0,
+    max_wz: 1.0,
     cmd_vel_default_ttl_ms: 300,
     release_allowed_modes: ["MANUAL"],
   },
@@ -77,19 +81,99 @@ const registry = new CommandRegistry({
   commands: ["cmd_vel"],
   telemetry: ["pico_hk"],
 });
+const manualRepeatIntervalMs = 120;
 
 export function App() {
   const transportRef = useRef<RoverTransport>(new MockRoverTransport());
+  const heartbeatInFlightRef = useRef(false);
+  const manualRepeaterRef = useRef<ManualCommandRepeater | null>(null);
+  const manualSendCommandRef = useRef<(command: ManualCommand) => void>(() => undefined);
+  const manualSendStopRef = useRef<() => void>(() => undefined);
   const seqRef = useRef(1);
   const bluetoothAvailable = useMemo(() => isWebBluetoothAvailable(), []);
   const [transportMode, setTransportMode] = useState<TransportMode>("mock");
   const [missionId, setMissionId] = useState("engineering_rover_demo");
   const [roverId, setRoverId] = useState("rover_01");
   const [connected, setConnected] = useState(false);
+  const [heartbeatRunning, setHeartbeatRunning] = useState(false);
+  const [lastHeartbeatAt, setLastHeartbeatAt] = useState<number | null>(null);
+  const [manualRepeatRunning, setManualRepeatRunning] = useState(false);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastPacket, setLastPacket] = useState<RoverPacket | null>(null);
 
   const pipeline = useMemo(() => new CommandAuthorizationPipeline(), []);
+
+  manualRepeaterRef.current ??= new ManualCommandRepeater({
+    intervalMs: manualRepeatIntervalMs,
+    sendCommand: (command) => manualSendCommandRef.current(command),
+    sendStop: () => manualSendStopRef.current(),
+  });
+
+  useEffect(() => {
+    if (!connected || transportMode !== "web_bluetooth") {
+      setHeartbeatRunning(false);
+      return;
+    }
+
+    let cancelled = false;
+
+    async function sendHeartbeat() {
+      const packet = createHeartbeatPacket({
+        missionId,
+        roverId,
+        seq: nextSeq(),
+        ttlMs: BLE_GATT_CONTRACT.heartbeatTimeoutMs,
+        schema,
+      });
+      const result = pipeline.evaluate({
+        packet,
+        missionProfile,
+        boardProfile,
+        safetyPolicy,
+        currentHashes: schema,
+        registry,
+        origin: "local_phone",
+        mode: "MANUAL",
+      });
+
+      if (!result.authorized) {
+        appendLog("rejected", `heartbeat rejected at ${result.stage}: ${result.reason}`);
+        return;
+      }
+
+      try {
+        const sent = await sendHeartbeatIfIdle({
+          transport: transportRef.current,
+          packet,
+          inFlight: heartbeatInFlightRef,
+        });
+        if (sent && !cancelled) {
+          setLastHeartbeatAt(packet.timestamp_ms);
+        }
+      } catch (error) {
+        appendLog("rejected", error instanceof Error ? error.message : String(error));
+      }
+    }
+
+    setHeartbeatRunning(true);
+    void sendHeartbeat();
+    const intervalId = window.setInterval(() => {
+      void sendHeartbeat();
+    }, BLE_GATT_CONTRACT.heartbeatPeriodMs);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(intervalId);
+      heartbeatInFlightRef.current = false;
+      setHeartbeatRunning(false);
+    };
+  }, [connected, transportMode, missionId, roverId, pipeline]);
+
+  useEffect(() => {
+    return () => {
+      manualRepeaterRef.current?.cancel();
+    };
+  }, []);
 
   function appendLog(status: LogEntry["status"], message: string) {
     setLogs((current) => [
@@ -109,8 +193,11 @@ export function App() {
   }
 
   async function disconnect() {
+    stopManualRepeat({ sendStop: false });
     await transportRef.current.disconnect();
     setConnected(false);
+    heartbeatInFlightRef.current = false;
+    setHeartbeatRunning(false);
     appendLog("system", `${transportLabel(transportMode)} disconnected`);
   }
 
@@ -120,8 +207,10 @@ export function App() {
     }
 
     if (connected) {
+      stopManualRepeat({ sendStop: false });
       await transportRef.current.disconnect();
       setConnected(false);
+      heartbeatInFlightRef.current = false;
     }
 
     transportRef.current =
@@ -130,7 +219,10 @@ export function App() {
     appendLog("system", `Transport mode: ${transportLabel(mode)}`);
   }
 
-  async function authorizeAndSend(packet: RoverPacket) {
+  async function authorizeAndSend(
+    packet: RoverPacket,
+    options: { logSent?: boolean; logLabel?: string } = {},
+  ): Promise<boolean> {
     const result = pipeline.evaluate({
       packet,
       missionProfile,
@@ -144,15 +236,19 @@ export function App() {
 
     if (!result.authorized) {
       appendLog("rejected", `${packet.msg_type} rejected at ${result.stage}: ${result.reason}`);
-      return;
+      return false;
     }
 
     try {
       await transportRef.current.send(packet);
       setLastPacket(packet);
-      appendLog("sent", `${packet.msg_type} sent seq=${packet.seq}`);
+      if (options.logSent ?? true) {
+        appendLog("sent", options.logLabel ?? `${packet.msg_type} sent seq=${packet.seq}`);
+      }
+      return true;
     } catch (error) {
       appendLog("rejected", error instanceof Error ? error.message : String(error));
+      return false;
     }
   }
 
@@ -162,7 +258,12 @@ export function App() {
     return seq;
   }
 
-  function sendCmd(vx: number, wz: number, brake = false) {
+  function sendCmd(
+    vx: number,
+    wz: number,
+    brake = false,
+    options: { logSent?: boolean; logLabel?: string } = {},
+  ) {
     void authorizeAndSend(
       createCmdVelPacket({
         missionId,
@@ -174,10 +275,19 @@ export function App() {
         ttlMs: 300,
         schema,
       }),
+      options,
     );
   }
 
+  manualSendCommandRef.current = (command) => {
+    sendCmd(command.vx, command.wz, command.brake ?? false, { logSent: false });
+  };
+  manualSendStopRef.current = () => {
+    sendCmd(0, 0, true, { logSent: true, logLabel: "manual release stop" });
+  };
+
   function sendEmergencyStop() {
+    stopManualRepeat({ sendStop: false });
     void authorizeAndSend(
       createEmergencyStopPacket({
         missionId,
@@ -187,6 +297,43 @@ export function App() {
         schema,
       }),
     );
+  }
+
+  function startManualRepeat(command: ManualCommand, label: string) {
+    manualRepeaterRef.current?.start(command);
+    setManualRepeatRunning(true);
+    appendLog(
+      "system",
+      `Manual repeat: ${label} vx=${command.vx} wz=${command.wz} brake=${command.brake ?? false}`,
+    );
+  }
+
+  function stopManualRepeat(options: { sendStop: boolean }) {
+    if (!manualRepeaterRef.current?.isRunning()) {
+      return;
+    }
+
+    if (options.sendStop) {
+      manualRepeaterRef.current.stopAndSendStop();
+    } else {
+      manualRepeaterRef.current.cancel();
+    }
+    setManualRepeatRunning(false);
+  }
+
+  function manualPointerHandlers(command: ManualCommand, label: string) {
+    return {
+      onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        startManualRepeat(command, label);
+      },
+      onPointerUp: (event: PointerEvent<HTMLButtonElement>) => {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+        stopManualRepeat({ sendStop: true });
+      },
+      onPointerLeave: () => stopManualRepeat({ sendStop: true }),
+      onPointerCancel: () => stopManualRepeat({ sendStop: true }),
+    };
   }
 
   return (
@@ -229,6 +376,17 @@ export function App() {
             Web Bluetooth is not available in this browser. Use Mock mode.
           </p>
         )}
+        {transportMode === "web_bluetooth" && (
+          <p className="transportNotice">
+            Heartbeat {heartbeatRunning ? "running" : "stopped"}
+            {lastHeartbeatAt === null
+              ? ""
+              : ` / last ${new Date(lastHeartbeatAt).toLocaleTimeString()}`}
+          </p>
+        )}
+        <p className="transportNotice">
+          Manual repeat {manualRepeatRunning ? "running" : "stopped"}
+        </p>
       </section>
 
       <section className="identityPanel" aria-label="Rover identity">
@@ -247,35 +405,35 @@ export function App() {
           <button
             type="button"
             className="driveButton forward"
-            onClick={() => sendCmd(0.3, 0)}
+            {...manualPointerHandlers(manualDriveCommands.forward, "forward")}
           >
             Forward
           </button>
           <button
             type="button"
             className="driveButton left"
-            onClick={() => sendCmd(0, -1)}
+            {...manualPointerHandlers(manualDriveCommands.left, "left")}
           >
             Left
           </button>
           <button
             type="button"
             className="driveButton stop"
-            onClick={() => sendCmd(0, 0, true)}
+            {...manualPointerHandlers(manualDriveCommands.stop, "stop")}
           >
             Stop
           </button>
           <button
             type="button"
             className="driveButton right"
-            onClick={() => sendCmd(0, 1)}
+            {...manualPointerHandlers(manualDriveCommands.right, "right")}
           >
             Right
           </button>
           <button
             type="button"
             className="driveButton back"
-            onClick={() => sendCmd(-0.3, 0)}
+            {...manualPointerHandlers(manualDriveCommands.back, "back")}
           >
             Back
           </button>
@@ -292,7 +450,14 @@ export function App() {
           <button
             type="button"
             className="neutralButton"
-            onClick={() => sendCmd(0, 0)}
+            onClick={() =>
+              sendCmd(
+                manualDriveCommands.neutral.vx,
+                manualDriveCommands.neutral.wz,
+                manualDriveCommands.neutral.brake,
+                { logLabel: "neutral stop sent" },
+              )
+            }
           >
             Neutral
           </button>
