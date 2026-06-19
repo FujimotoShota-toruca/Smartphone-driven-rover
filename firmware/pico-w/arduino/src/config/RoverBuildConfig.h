@@ -8,7 +8,7 @@
 // 3. Upload again and scan for ROVER_BLE_DEVICE_NAME.
 //
 // PlatformIO defines ROVER_ENABLE_BLE_GATT only in the experimental env.
-// #define ROVER_ENABLE_BLE_GATT
+#define ROVER_ENABLE_BLE_GATT
 
 #ifndef ROVER_BLE_DEVICE_NAME
 #define ROVER_BLE_DEVICE_NAME "SmartphoneRover-PicoW"
