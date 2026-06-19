@@ -5,4 +5,5 @@ export interface RoverTransport {
   disconnect(): Promise<void>;
   send(packet: RoverPacket): Promise<void>;
   isConnected(): boolean;
+  setTelemetryHandler?(handler: ((message: string) => void) | null): void;
 }

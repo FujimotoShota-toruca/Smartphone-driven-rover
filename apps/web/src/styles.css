@@ -140,6 +140,37 @@ select {
   margin-bottom: 18px;
 }
 
+.pwmPanel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+.pwmPanel input[type="range"] {
+  width: 100%;
+}
+
+.assignmentPanel {
+  margin-top: 14px;
+  padding: 12px 0;
+  border-top: 1px solid #d6dde2;
+  color: #4d6270;
+}
+
+.assignmentPanel summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.assignmentGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+}
+
 .drivePad {
   display: grid;
   grid-template-areas:
@@ -262,6 +293,11 @@ pre {
   }
 
   .manualPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .pwmPanel,
+  .assignmentGrid {
     grid-template-columns: 1fr;
   }
 

@@ -39,4 +39,30 @@ describe("createCmdVelPacket", () => {
       },
     });
   });
+
+  it("can include Lv1 manual_pwm payload fields", () => {
+    const packet = createCmdVelPacket({
+      missionId: "engineering_rover_demo",
+      roverId: "rover_01",
+      seq: 43,
+      vx: 0,
+      wz: 1,
+      brake: false,
+      mode: "manual_pwm",
+      leftPwm: -1,
+      rightPwm: 1,
+      ttlMs: 300,
+      schema,
+      nowMs: 123457,
+    });
+
+    expect(packet.payload).toEqual({
+      vx: 0,
+      wz: 1,
+      brake: false,
+      mode: "manual_pwm",
+      left_pwm: -1,
+      right_pwm: 1,
+    });
+  });
 });

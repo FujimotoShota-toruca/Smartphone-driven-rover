@@ -26,6 +26,10 @@ export class MockRoverTransport implements RoverTransport {
     return this.#connected;
   }
 
+  public setTelemetryHandler(): void {
+    // Mock transport does not emit firmware telemetry.
+  }
+
   public getSentPackets(): RoverPacket[] {
     return this.#sentPackets.map((packet) => structuredClone(packet));
   }

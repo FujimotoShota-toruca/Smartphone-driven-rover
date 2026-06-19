@@ -8,6 +8,10 @@ struct CmdVel {
   float vx = 0.0f;
   float wz = 0.0f;
   bool brake = false;
+  bool manualPwm = false;
+  bool coast = false;
+  float leftPwm = 0.0f;
+  float rightPwm = 0.0f;
   uint32_t ttlMs = 300;
 };
 

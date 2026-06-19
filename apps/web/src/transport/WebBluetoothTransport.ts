@@ -39,11 +39,25 @@ export interface BluetoothRemoteGattServiceLike {
 export interface BluetoothRemoteGattCharacteristicLike {
   writeValue(value: BufferSource): Promise<void>;
   startNotifications?(): Promise<BluetoothRemoteGattCharacteristicLike>;
+  addEventListener?(
+    type: "characteristicvaluechanged",
+    listener: (event: BluetoothCharacteristicValueChangedEventLike) => void,
+  ): void;
+  removeEventListener?(
+    type: "characteristicvaluechanged",
+    listener: (event: BluetoothCharacteristicValueChangedEventLike) => void,
+  ): void;
 }
 
 export interface WebBluetoothTransportOptions {
   navigatorLike?: Partial<BluetoothNavigator>;
   codec?: PacketCodec;
+}
+
+export interface BluetoothCharacteristicValueChangedEventLike {
+  target: {
+    value?: DataView;
+  };
 }
 
 export class WebBluetoothTransport implements RoverTransport {
@@ -56,6 +70,22 @@ export class WebBluetoothTransport implements RoverTransport {
   #statusReadCharacteristic: BluetoothRemoteGattCharacteristicLike | null = null;
   #writeChain: Promise<void> = Promise.resolve();
   #writeInProgress = false;
+  #telemetryHandler: ((message: string) => void) | null = null;
+  readonly #textDecoder = new TextDecoder();
+  readonly #handleTelemetryChanged = (
+    event: BluetoothCharacteristicValueChangedEventLike,
+  ) => {
+    const value = event.target.value;
+    if (!value) {
+      return;
+    }
+
+    this.#telemetryHandler?.(
+      this.#textDecoder.decode(
+        new Uint8Array(value.buffer, value.byteOffset, value.byteLength),
+      ),
+    );
+  };
 
   public constructor(options: WebBluetoothTransportOptions = {}) {
     this.#navigatorLike = options.navigatorLike;
@@ -86,6 +116,10 @@ export class WebBluetoothTransport implements RoverTransport {
     if (telemetryNotifyCharacteristic.startNotifications) {
       await telemetryNotifyCharacteristic.startNotifications();
     }
+    telemetryNotifyCharacteristic.addEventListener?.(
+      "characteristicvaluechanged",
+      this.#handleTelemetryChanged,
+    );
 
     this.#statusReadCharacteristic = await this.#getOptionalStatusCharacteristic(service);
     this.#device = device;
@@ -95,6 +129,11 @@ export class WebBluetoothTransport implements RoverTransport {
   }
 
   public async disconnect(): Promise<void> {
+    this.#telemetryNotifyCharacteristic?.removeEventListener?.(
+      "characteristicvaluechanged",
+      this.#handleTelemetryChanged,
+    );
+
     if (this.#device?.gatt?.connected) {
       this.#device.gatt.disconnect();
     }
@@ -140,6 +179,10 @@ export class WebBluetoothTransport implements RoverTransport {
 
   public isWriteInProgress(): boolean {
     return this.#writeInProgress;
+  }
+
+  public setTelemetryHandler(handler: ((message: string) => void) | null): void {
+    this.#telemetryHandler = handler;
   }
 
   async #getOptionalStatusCharacteristic(

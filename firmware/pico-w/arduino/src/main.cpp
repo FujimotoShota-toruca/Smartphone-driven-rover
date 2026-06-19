@@ -19,6 +19,7 @@ constexpr uint32_t kHeartbeatTimeoutMs = 1000;
 constexpr uint32_t kSerialWaitTimeoutMs = 3000;
 constexpr uint32_t kMinStatusIntervalMs = 250;
 constexpr uint32_t kMaxStatusIntervalMs = 60000;
+constexpr uint32_t kBleSafetyStateIntervalMs = 1000;
 
 Tb67hMotorDriver motor(BoardPins::TB67H_B_IN1, BoardPins::TB67H_B_IN2,
                        BoardPins::TB67H_A_IN1, BoardPins::TB67H_A_IN2);
@@ -34,6 +35,7 @@ uint32_t activeCmdReceivedAtMs = 0;
 bool hasActiveCmdVel = false;
 uint32_t statusIntervalMs = 0;
 uint32_t nextStatusAtMs = 0;
+uint32_t nextBleSafetyStateAtMs = 0;
 PacketHandler packetHandler(
     PacketHandlerState{activeCmdVel, activeCmdReceivedAtMs, hasActiveCmdVel,
                        statusIntervalMs, nextStatusAtMs},
@@ -50,11 +52,22 @@ void processTransport(RoverTransport& packetTransport, uint32_t nowMs,
           hasActiveCmdVel &&
           commandTtlGuard.isExpired(activeCmdReceivedAtMs, activeCmdVel.ttlMs,
                                     nowMs);
-      const MotorCommand mixed = mixer.mix(packet.cmdVel);
+      const MotorCommand mixed =
+          packet.cmdVel.manualPwm
+              ? MotorCommand{packet.cmdVel.leftPwm, packet.cmdVel.rightPwm,
+                             packet.cmdVel.brake}
+              : mixer.mix(packet.cmdVel);
+      const char* mode = "reject";
+      if (result.accepted) {
+        mode = packet.cmdVel.brake ? "brake"
+                                   : (packet.cmdVel.coast ? "coast" : "drive");
+      }
       Serial.print("cmd_vel diagnostic handling=");
       Serial.print(result.accepted ? "handled" : "rejected");
       Serial.print(" reason=");
       Serial.print(result.reason);
+      Serial.print(" mode=");
+      Serial.print(mode);
       Serial.print(" seq=");
       Serial.print(packet.seq);
       Serial.print(" vx=");
@@ -63,6 +76,8 @@ void processTransport(RoverTransport& packetTransport, uint32_t nowMs,
       Serial.print(packet.cmdVel.wz, 3);
       Serial.print(" brake=");
       Serial.print(packet.cmdVel.brake ? "true" : "false");
+      Serial.print(" coast=");
+      Serial.print(packet.cmdVel.coast ? "true" : "false");
       Serial.print(" ttl_ms=");
       Serial.print(packet.cmdVel.ttlMs);
       Serial.print(" left=");
@@ -76,12 +91,13 @@ void processTransport(RoverTransport& packetTransport, uint32_t nowMs,
       Serial.print(" cmd=");
       Serial.println(!hasActiveCmdVel ? "inactive" : (ttlExpired ? "expired" : "active"));
     }
-    if (responseTransport == nullptr || !result.ackRequired) {
+    if (responseTransport == nullptr || !result.ackRequired ||
+        packet.type == RoverMessageType::Heartbeat) {
       continue;
     }
 
     if (result.accepted) {
-      responseTransport->sendAck(result.response);
+      responseTransport->sendAck(result.response, result.reason);
     } else {
       responseTransport->sendReject(result.response, result.reason);
     }
@@ -98,14 +114,34 @@ bool safetyStopRequired(uint32_t nowMs) {
   if (!hasActiveCmdVel) {
     return true;
   }
+  if (activeCmdVel.manualPwm) {
+    return false;
+  }
   return commandTtlGuard.isExpired(activeCmdReceivedAtMs, activeCmdVel.ttlMs,
                                    nowMs);
 }
 
 void applyActiveCommand() {
+  if (activeCmdVel.manualPwm) {
+    if (activeCmdVel.brake) {
+      motor.brake();
+      return;
+    }
+    if (activeCmdVel.coast) {
+      motor.coast();
+      return;
+    }
+    motor.setLeftRight(activeCmdVel.leftPwm, activeCmdVel.rightPwm);
+    return;
+  }
+
   const MotorCommand command = mixer.mix(activeCmdVel);
   if (command.brake) {
     motor.brake();
+    return;
+  }
+  if (command.left == 0.0f && command.right == 0.0f) {
+    motor.coast();
     return;
   }
   motor.setLeftRight(command.left, command.right);
@@ -113,7 +149,7 @@ void applyActiveCommand() {
 
 void printStatus(uint32_t nowMs, bool safetyStop) {
   const bool ttlExpired =
-      hasActiveCmdVel &&
+      hasActiveCmdVel && !activeCmdVel.manualPwm &&
       commandTtlGuard.isExpired(activeCmdReceivedAtMs, activeCmdVel.ttlMs,
                                 nowMs);
 
@@ -149,6 +185,29 @@ void maybePrintStatus(uint32_t nowMs, bool safetyStop) {
   }
 }
 
+void maybeSendBleSafetyState(uint32_t nowMs, bool safetyStop) {
+  if (static_cast<int32_t>(nowMs - nextBleSafetyStateAtMs) < 0) {
+    return;
+  }
+
+  const bool ttlExpired =
+      hasActiveCmdVel && !activeCmdVel.manualPwm &&
+      commandTtlGuard.isExpired(activeCmdReceivedAtMs, activeCmdVel.ttlMs,
+                                nowMs);
+  const char* cmdState = !hasActiveCmdVel ? "inactive" : (ttlExpired ? "expired" : "active");
+  const char* activeMode = "none";
+  if (hasActiveCmdVel) {
+    activeMode = activeCmdVel.brake ? "brake" : (activeCmdVel.coast ? "coast" : "drive");
+  }
+  const float leftPwm = activeCmdVel.manualPwm ? activeCmdVel.leftPwm : 0.0f;
+  const float rightPwm = activeCmdVel.manualPwm ? activeCmdVel.rightPwm : 0.0f;
+  bleTransport.sendSafetyState(estopLatch.isLatched() ? "latched" : "clear",
+                               heartbeatWatchdog.isTimedOut(nowMs) ? "timeout" : "ok",
+                               cmdState, safetyStop, nowMs, activeMode, leftPwm,
+                               rightPwm);
+  nextBleSafetyStateAtMs = nowMs + kBleSafetyStateIntervalMs;
+}
+
 void waitForSerial(uint32_t timeoutMs) {
   const uint32_t startedAtMs = millis();
   while (!Serial && millis() - startedAtMs < timeoutMs) {
@@ -180,8 +239,12 @@ void roverFirmwareLoop() {
 
   const bool safetyStop = safetyStopRequired(nowMs);
   maybePrintStatus(nowMs, safetyStop);
+  maybeSendBleSafetyState(nowMs, safetyStop);
 
   if (safetyStop) {
+    if (estopLatch.isLatched() || heartbeatWatchdog.isTimedOut(nowMs)) {
+      hasActiveCmdVel = false;
+    }
     motor.stop();
     digitalWrite(BoardPins::LED_1, HIGH);
     digitalWrite(BoardPins::LED_2, LOW);

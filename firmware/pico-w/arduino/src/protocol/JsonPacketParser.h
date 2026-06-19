@@ -91,6 +91,10 @@ class JsonPacketParser {
     bool brake = false;
     uint32_t ttlMs = kDefaultBleCmdVelTtlMs;
 
+    if (hasStringValue(data, length, "\"mode\"", "manual_pwm")) {
+      return parseManualPwm(data, length, packet);
+    }
+
     const char* vxStart = findValueStart(data, length, "\"vx\"");
     if (vxStart == nullptr) {
       lastError_ = "missing_vx";
@@ -139,6 +143,72 @@ class JsonPacketParser {
     packet.cmdVel.vx = vx;
     packet.cmdVel.wz = wz;
     packet.cmdVel.brake = brake;
+    packet.cmdVel.ttlMs = ttlMs;
+    lastError_ = "";
+    return true;
+  }
+
+  bool parseManualPwm(const uint8_t* data, size_t length,
+                      RoverPacket& packet) const {
+    float leftPwm = 0.0f;
+    float rightPwm = 0.0f;
+    bool brake = false;
+    bool coast = false;
+    uint32_t ttlMs = kDefaultBleCmdVelTtlMs;
+
+    const char* leftStart = findValueStart(data, length, "\"left_pwm\"");
+    if (leftStart == nullptr) {
+      lastError_ = "missing_left_pwm";
+      return false;
+    }
+    if (!parseFloatAt(leftStart, leftPwm) || !isfinite(leftPwm)) {
+      lastError_ = "invalid_number";
+      return false;
+    }
+    const char* rightStart = findValueStart(data, length, "\"right_pwm\"");
+    if (rightStart == nullptr) {
+      lastError_ = "missing_right_pwm";
+      return false;
+    }
+    if (!parseFloatAt(rightStart, rightPwm) || !isfinite(rightPwm)) {
+      lastError_ = "invalid_number";
+      return false;
+    }
+    if (fabsf(leftPwm) > 1.0f) {
+      lastError_ = "left_pwm_limit";
+      return false;
+    }
+    if (fabsf(rightPwm) > 1.0f) {
+      lastError_ = "right_pwm_limit";
+      return false;
+    }
+    if (!parseOptionalBool(data, length, "\"brake\"", brake) &&
+        !isLastParseOk()) {
+      lastError_ = "invalid_brake";
+      return false;
+    }
+    if (!parseOptionalBool(data, length, "\"coast\"", coast) &&
+        !isLastParseOk()) {
+      lastError_ = "invalid_coast";
+      return false;
+    }
+    if (parseOptionalUint32(data, length, "\"ttl_ms\"", ttlMs)) {
+      if (ttlMs == 0 || ttlMs > kMaxBleCmdVelTtlMs) {
+        lastError_ = "ttl_out_of_range";
+        return false;
+      }
+    } else if (!isLastParseOk()) {
+      lastError_ = "ttl_out_of_range";
+      return false;
+    }
+
+    packet.cmdVel.manualPwm = true;
+    packet.cmdVel.leftPwm = leftPwm;
+    packet.cmdVel.rightPwm = rightPwm;
+    packet.cmdVel.vx = (leftPwm + rightPwm) / 2.0f;
+    packet.cmdVel.wz = (rightPwm - leftPwm) / 2.0f;
+    packet.cmdVel.brake = brake;
+    packet.cmdVel.coast = coast || (!brake && leftPwm == 0.0f && rightPwm == 0.0f);
     packet.cmdVel.ttlMs = ttlMs;
     lastError_ = "";
     return true;
@@ -266,6 +336,18 @@ class JsonPacketParser {
   }
 
   bool isLastParseOk() const { return lastError_[0] == '\0'; }
+
+  bool hasStringValue(const uint8_t* data, size_t length, const char* key,
+                      const char* expected) const {
+    const char* valueStart = findValueStart(data, length, key);
+    if (valueStart == nullptr || *valueStart != '"') {
+      return false;
+    }
+    valueStart++;
+    const size_t expectedLength = strlen(expected);
+    return strncmp(valueStart, expected, expectedLength) == 0 &&
+           valueStart[expectedLength] == '"';
+  }
 
   const char* findValueStart(const uint8_t* data, size_t length,
                              const char* key) const {

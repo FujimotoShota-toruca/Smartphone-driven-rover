@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { BLE_GATT_CONTRACT, type RoverPacket } from "@smartphone-rover/protocol";
 import {
   CommandAuthorizationPipeline,
@@ -14,11 +14,21 @@ import type {
 } from "@smartphone-rover/mission-db/types";
 
 import { sendHeartbeatIfIdle } from "./heartbeat/HeartbeatScheduler";
-import { ManualCommandRepeater, type ManualCommand } from "./manual/ManualCommandRepeater";
-import { manualDriveCommands } from "./manual/manualDriveCommands";
+import {
+  DEFAULT_MANUAL_PWM_PERCENT,
+  createManualDriveCommand,
+  defaultManualButtonAssignments,
+  manualDriveCommands,
+  manualDriveCommandCodes,
+  manualDriveDirections,
+  manualPwmToCompatCmdVel,
+  type ManualDriveDirection,
+  type ManualPwmCommand,
+} from "./manual/manualDriveCommands";
 import { createCmdVelPacket } from "./packet/createCmdVelPacket";
 import { createEmergencyStopPacket } from "./packet/createEmergencyStopPacket";
 import { createHeartbeatPacket } from "./packet/createHeartbeatPacket";
+import { parseTelemetryMessage, type AckRejectTelemetry, type SafetyStateTelemetry } from "./telemetry/TelemetryMessage";
 import { MockRoverTransport } from "./transport/MockRoverTransport";
 import type { RoverTransport } from "./transport/RoverTransport";
 import { isWebBluetoothAvailable } from "./transport/BluetoothAvailability";
@@ -81,14 +91,9 @@ const registry = new CommandRegistry({
   commands: ["cmd_vel"],
   telemetry: ["pico_hk"],
 });
-const manualRepeatIntervalMs = 120;
-
 export function App() {
   const transportRef = useRef<RoverTransport>(new MockRoverTransport());
   const heartbeatInFlightRef = useRef(false);
-  const manualRepeaterRef = useRef<ManualCommandRepeater | null>(null);
-  const manualSendCommandRef = useRef<(command: ManualCommand) => void>(() => undefined);
-  const manualSendStopRef = useRef<() => void>(() => undefined);
   const seqRef = useRef(1);
   const bluetoothAvailable = useMemo(() => isWebBluetoothAvailable(), []);
   const [transportMode, setTransportMode] = useState<TransportMode>("mock");
@@ -97,16 +102,23 @@ export function App() {
   const [connected, setConnected] = useState(false);
   const [heartbeatRunning, setHeartbeatRunning] = useState(false);
   const [lastHeartbeatAt, setLastHeartbeatAt] = useState<number | null>(null);
-  const [manualRepeatRunning, setManualRepeatRunning] = useState(false);
+  const [activeManualCommand, setActiveManualCommand] = useState("none");
+  const [lastManualCommandAt, setLastManualCommandAt] = useState<number | null>(null);
+  const [leftPwmPercent, setLeftPwmPercent] = useState(DEFAULT_MANUAL_PWM_PERCENT);
+  const [rightPwmPercent, setRightPwmPercent] = useState(DEFAULT_MANUAL_PWM_PERCENT);
+  const [buttonAssignments, setButtonAssignments] = useState(defaultManualButtonAssignments);
+  const [lastAckReject, setLastAckReject] = useState<AckRejectTelemetry | null>(null);
+  const [safetyState, setSafetyState] = useState<SafetyStateTelemetry | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastPacket, setLastPacket] = useState<RoverPacket | null>(null);
 
   const pipeline = useMemo(() => new CommandAuthorizationPipeline(), []);
 
-  manualRepeaterRef.current ??= new ManualCommandRepeater({
-    intervalMs: manualRepeatIntervalMs,
-    sendCommand: (command) => manualSendCommandRef.current(command),
-    sendStop: () => manualSendStopRef.current(),
+  useEffect(() => {
+    transportRef.current.setTelemetryHandler?.(handleTelemetryMessage);
+    return () => {
+      transportRef.current.setTelemetryHandler?.(null);
+    };
   });
 
   useEffect(() => {
@@ -169,12 +181,6 @@ export function App() {
     };
   }, [connected, transportMode, missionId, roverId, pipeline]);
 
-  useEffect(() => {
-    return () => {
-      manualRepeaterRef.current?.cancel();
-    };
-  }, []);
-
   function appendLog(status: LogEntry["status"], message: string) {
     setLogs((current) => [
       {
@@ -193,7 +199,6 @@ export function App() {
   }
 
   async function disconnect() {
-    stopManualRepeat({ sendStop: false });
     await transportRef.current.disconnect();
     setConnected(false);
     heartbeatInFlightRef.current = false;
@@ -207,7 +212,6 @@ export function App() {
     }
 
     if (connected) {
-      stopManualRepeat({ sendStop: false });
       await transportRef.current.disconnect();
       setConnected(false);
       heartbeatInFlightRef.current = false;
@@ -215,8 +219,32 @@ export function App() {
 
     transportRef.current =
       mode === "web_bluetooth" ? new WebBluetoothTransport() : new MockRoverTransport();
+    transportRef.current.setTelemetryHandler?.(handleTelemetryMessage);
     setTransportMode(mode);
     appendLog("system", `Transport mode: ${transportLabel(mode)}`);
+  }
+
+  function handleTelemetryMessage(messageText: string) {
+    try {
+      const message = parseTelemetryMessage(messageText);
+      if (message.msg_type === "ack" || message.msg_type === "reject") {
+        setLastAckReject(message);
+        appendLog(
+          message.accepted ? "sent" : "rejected",
+          `Pico ${message.msg_type} seq=${message.seq} reason=${message.reason}`,
+        );
+        return;
+      }
+
+      if (message.msg_type === "safety_state") {
+        setSafetyState(message);
+      }
+    } catch (error) {
+      appendLog(
+        "rejected",
+        `telemetry parse error: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   async function authorizeAndSend(
@@ -258,36 +286,41 @@ export function App() {
     return seq;
   }
 
-  function sendCmd(
-    vx: number,
-    wz: number,
-    brake = false,
-    options: { logSent?: boolean; logLabel?: string } = {},
-  ) {
-    void authorizeAndSend(
+  async function sendManualPwmCommand(
+    command: ManualPwmCommand,
+    label: string,
+  ): Promise<boolean> {
+    setLastManualCommandAt(Date.now());
+    setActiveManualCommand(label);
+    const compat = manualPwmToCompatCmdVel(command);
+    return authorizeAndSend(
       createCmdVelPacket({
         missionId,
         roverId,
         seq: nextSeq(),
-        vx,
-        wz,
-        brake,
+        vx: compat.vx,
+        wz: compat.wz,
+        brake: command.brake,
+        mode: "manual_pwm",
+        leftPwm: command.leftPwm,
+        rightPwm: command.rightPwm,
+        coast: command.coast,
         ttlMs: 300,
         schema,
       }),
-      options,
+      {
+        logLabel:
+          command.coast
+            ? "manual neutral coast"
+            : command.brake
+              ? "manual stop brake"
+              : `manual pwm drive left=${command.leftPwm.toFixed(2)} right=${command.rightPwm.toFixed(2)}`,
+      },
     );
   }
 
-  manualSendCommandRef.current = (command) => {
-    sendCmd(command.vx, command.wz, command.brake ?? false, { logSent: false });
-  };
-  manualSendStopRef.current = () => {
-    sendCmd(0, 0, true, { logSent: true, logLabel: "manual release stop" });
-  };
-
   function sendEmergencyStop() {
-    stopManualRepeat({ sendStop: false });
+    setActiveManualCommand("none");
     void authorizeAndSend(
       createEmergencyStopPacket({
         missionId,
@@ -299,41 +332,28 @@ export function App() {
     );
   }
 
-  function startManualRepeat(command: ManualCommand, label: string) {
-    manualRepeaterRef.current?.start(command);
-    setManualRepeatRunning(true);
-    appendLog(
-      "system",
-      `Manual repeat: ${label} vx=${command.vx} wz=${command.wz} brake=${command.brake ?? false}`,
+  function sendExplicitStop() {
+    void sendManualPwmCommand(manualDriveCommands.stop, "stop");
+  }
+
+  function sendNeutralCoast() {
+    void sendManualPwmCommand(manualDriveCommands.neutral, "neutral");
+  }
+
+  function sendManualDirection(button: ManualDriveDirection) {
+    const direction = buttonAssignments[button];
+    void sendManualPwmCommand(
+      createManualDriveCommand(direction, leftPwmPercent, rightPwmPercent),
+      button === direction ? direction : `${button}->${direction}`,
     );
   }
 
-  function stopManualRepeat(options: { sendStop: boolean }) {
-    if (!manualRepeaterRef.current?.isRunning()) {
-      return;
-    }
-
-    if (options.sendStop) {
-      manualRepeaterRef.current.stopAndSendStop();
-    } else {
-      manualRepeaterRef.current.cancel();
-    }
-    setManualRepeatRunning(false);
-  }
-
-  function manualPointerHandlers(command: ManualCommand, label: string) {
-    return {
-      onPointerDown: (event: PointerEvent<HTMLButtonElement>) => {
-        event.currentTarget.setPointerCapture(event.pointerId);
-        startManualRepeat(command, label);
-      },
-      onPointerUp: (event: PointerEvent<HTMLButtonElement>) => {
-        event.currentTarget.releasePointerCapture(event.pointerId);
-        stopManualRepeat({ sendStop: true });
-      },
-      onPointerLeave: () => stopManualRepeat({ sendStop: true }),
-      onPointerCancel: () => stopManualRepeat({ sendStop: true }),
-    };
+  function changeButtonAssignment(button: ManualDriveDirection, direction: ManualDriveDirection) {
+    setButtonAssignments((current) => ({
+      ...current,
+      [button]: direction,
+    }));
+    appendLog("system", `${capitalizeDirection(button)} button sends ${capitalizeDirection(direction)}`);
   }
 
   return (
@@ -385,7 +405,29 @@ export function App() {
           </p>
         )}
         <p className="transportNotice">
-          Manual repeat {manualRepeatRunning ? "running" : "stopped"}
+          Active manual command={activeManualCommand}
+          {lastManualCommandAt === null
+            ? ""
+            : ` / last ${new Date(lastManualCommandAt).toLocaleTimeString()}`}
+        </p>
+        <p className="transportNotice">
+          Pico safety estop={safetyState?.estop ?? "unknown"} heartbeat=
+          {safetyState?.heartbeat ?? "unknown"} safety_stop=
+          {safetyState ? String(safetyState.safety_stop) : "unknown"}
+        </p>
+        <p className="transportNotice">
+          Pico active mode={safetyState?.active_mode ?? "unknown"} left=
+          {safetyState?.left_pwm?.toFixed(2) ?? "unknown"} right=
+          {safetyState?.right_pwm?.toFixed(2) ?? "unknown"}
+        </p>
+        <p className="transportNotice">
+          Last ack/reject{" "}
+          {lastAckReject
+            ? `${lastAckReject.msg_type} seq=${lastAckReject.seq} reason=${lastAckReject.reason}`
+            : "none"}
+        </p>
+        <p className="transportNotice">
+          Last safety timestamp {safetyState ? `${safetyState.now_ms} ms` : "none"}
         </p>
       </section>
 
@@ -401,39 +443,64 @@ export function App() {
       </section>
 
       <section className="manualPanel" aria-label="Manual controls">
+        <div className="pwmPanel" aria-label="Manual PWM controls">
+          <label>
+            Left output {leftPwmPercent}%
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={leftPwmPercent}
+              onChange={(event) => setLeftPwmPercent(Number(event.target.value))}
+            />
+          </label>
+          <label>
+            Right output {rightPwmPercent}%
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={rightPwmPercent}
+              onChange={(event) => setRightPwmPercent(Number(event.target.value))}
+            />
+          </label>
+        </div>
+
         <div className="drivePad" aria-label="Drive pad">
           <button
             type="button"
             className="driveButton forward"
-            {...manualPointerHandlers(manualDriveCommands.forward, "forward")}
+            onClick={() => sendManualDirection("forward")}
           >
             Forward
           </button>
           <button
             type="button"
             className="driveButton left"
-            {...manualPointerHandlers(manualDriveCommands.left, "left")}
+            onClick={() => sendManualDirection("left")}
           >
             Left
           </button>
           <button
             type="button"
             className="driveButton stop"
-            {...manualPointerHandlers(manualDriveCommands.stop, "stop")}
+            onClick={sendExplicitStop}
           >
             Stop
           </button>
           <button
             type="button"
             className="driveButton right"
-            {...manualPointerHandlers(manualDriveCommands.right, "right")}
+            onClick={() => sendManualDirection("right")}
           >
             Right
           </button>
           <button
             type="button"
             className="driveButton back"
-            {...manualPointerHandlers(manualDriveCommands.back, "back")}
+            onClick={() => sendManualDirection("back")}
           >
             Back
           </button>
@@ -450,14 +517,7 @@ export function App() {
           <button
             type="button"
             className="neutralButton"
-            onClick={() =>
-              sendCmd(
-                manualDriveCommands.neutral.vx,
-                manualDriveCommands.neutral.wz,
-                manualDriveCommands.neutral.brake,
-                { logLabel: "neutral stop sent" },
-              )
-            }
+            onClick={sendNeutralCoast}
           >
             Neutral
           </button>
@@ -480,10 +540,37 @@ export function App() {
           </ol>
         </div>
       </section>
+
+      <details className="assignmentPanel">
+        <summary>Command assignment</summary>
+        <div className="assignmentGrid" aria-label="Manual button assignments">
+          {manualDriveDirections.map((button) => (
+            <label key={button}>
+              {capitalizeDirection(button)} button
+              <select
+                value={buttonAssignments[button]}
+                onChange={(event) =>
+                  changeButtonAssignment(button, event.target.value as ManualDriveDirection)
+                }
+              >
+                {manualDriveDirections.map((direction) => (
+                  <option key={direction} value={direction}>
+                    {manualDriveCommandCodes[direction]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      </details>
     </main>
   );
 }
 
 function transportLabel(mode: TransportMode): string {
   return mode === "web_bluetooth" ? "Web Bluetooth" : "MockTransport";
+}
+
+function capitalizeDirection(direction: ManualDriveDirection): string {
+  return direction.charAt(0).toUpperCase() + direction.slice(1);
 }

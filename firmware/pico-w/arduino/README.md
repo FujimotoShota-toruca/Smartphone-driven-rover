@@ -271,7 +271,8 @@ fall back to `motor.stop()`. `heartbeat` kicks the existing
 `HeartbeatWatchdog`. For Lv1 manual drive, BLE `cmd_vel` is treated as an
 open-loop normalized drive command, not as a measured physical velocity. Wheel
 encoders, speed estimation, and closed-loop control are future work. The Lv1
-goal is simple: press to drive, release to stop, E-stop to stop immediately.
+goal is simple: command an open-loop duty output, Stop or Neutral to clear it,
+and E-stop to stop immediately.
 
 BLE `cmd_vel` is accepted only when E-stop is clear, heartbeat is fresh,
 `ttl_ms` is within the firmware limit, and the payload is inside the temporary
@@ -281,13 +282,42 @@ firmware limits:
 - `abs(wz) <= 1.0`
 - `0 < ttl_ms <= 500`
 
-The current web manual drive commands use normalized values:
+The current web manual drive commands use one-shot normalized left/right PWM
+commands:
 
-- Forward: `vx=1.0`, `wz=0.0`, `brake=false`.
-- Back: `vx=-1.0`, `wz=0.0`, `brake=false`.
-- Left: `vx=0.0`, `wz=-1.0`, `brake=false`.
-- Right: `vx=0.0`, `wz=1.0`, `brake=false`.
-- Stop / Neutral / release stop: `vx=0.0`, `wz=0.0`, `brake=true`.
+- Left output / Right output sliders are UI strength controls from `0` to
+  `100` percent. The default is `50` percent.
+- Internal negative PWM values mean reverse motor direction. The web UI hides
+  that sign and derives it from Forward / Back / Left / Right.
+- The current right-side output has a temporary dead-zone compensation in the
+  web command generator: `0` percent remains stopped, while non-zero right
+  output is mapped into roughly `50` to `100` percent effective duty.
+- Forward / Back / Left / Right: send the current slider values with the
+  direction signs needed for that operation.
+- The web UI has a collapsed manual button assignment control at the bottom of
+  the page so each visible direction button can be mapped during bench
+  debugging. The dropdown options are shown as motor status codes:
+  Forward=`1010`, Back=`0101`, Left=`0110`, Right=`1001`. The first two digits
+  are the left motor status and the last two digits are the right motor status.
+- Stop: `left_pwm=0.0`, `right_pwm=0.0`, `brake=true`.
+- Neutral / coast: `left_pwm=0.0`, `right_pwm=0.0`, `brake=false`,
+  `coast=true`.
+
+The current test rover wiring has a direction/sign mismatch relative to the web
+button labels. For the smallest and least confusing Lv1 change, the web manual
+command generator currently applies that wiring correction before sending
+`manual_pwm`. A future Board Profile or Motor HAL mapping should own this
+per-board correction.
+
+Stop and Neutral are intentionally different. Stop / release stop uses the
+brake path. Neutral is an explicit user command for coast / output off and
+should drive the TB67H inputs LOW/LOW. E-stop, heartbeat timeout, TTL expiry,
+and disconnect safety still use the local safety-stop path rather than Neutral.
+
+The web app no longer uses press-and-hold repeat for Lv1 manual drive. A drive
+command is sent once and the Pico W holds that active manual output while
+heartbeat is ok and E-stop is clear. Stop, Neutral, E-stop, heartbeat timeout,
+or disconnect clear the active output.
 
 BLE E-stop check:
 
@@ -309,23 +339,26 @@ BLE motion command check:
 2. Connect from the web app with Web Bluetooth.
 3. Confirm heartbeat is being handled periodically.
 4. Send `?` from Serial Monitor and confirm heartbeat is `ok`.
-5. Press and hold Forward and confirm both wheels rotate in the forward
-   direction.
-6. Press and hold Back and confirm both wheels rotate in the reverse direction.
-7. Press Left / Right and confirm the wheels rotate in opposite directions.
-8. Release the button and confirm a stop/brake `cmd_vel` is sent and output
-   stops.
-9. Press E-stop and confirm the motors stop and status shows `estop=latched`.
-10. While E-stop is latched, confirm Forward does not move the motors.
-11. Send `r` from Serial mock to clear E-stop.
-12. Disconnect the web app and confirm heartbeat timeout returns the firmware
+5. Confirm the Left output and Right output sliders start at 50 percent.
+6. Move the sliders between 0 and 100 percent.
+7. If needed, open the bottom command assignment panel and match the button
+   assignments to the current bench wiring.
+8. Press Forward / Back / Left / Right and confirm the physical direction
+   matches the button label.
+9. Press Stop and confirm braking stop behavior.
+10. Press Neutral and confirm coast / output-off behavior. The motor driver LEDs
+    should go off if the hardware reflects LOW/LOW inputs.
+11. Press E-stop and confirm the motors stop and status shows `estop=latched`.
+12. While E-stop is latched, confirm drive commands are rejected.
+13. Send `r` from Serial mock to clear E-stop.
+14. Disconnect the web app and confirm heartbeat timeout returns the firmware
     to safety stop.
 
 The expected `cmd_vel` diagnostic line includes handling result, reject reason,
 sequence, payload, mixed motor command, and safety state:
 
 ```text
-cmd_vel diagnostic handling=handled reason=cmd_vel accepted seq=42 vx=1.000 wz=0.000 brake=false ttl_ms=300 left=1.000 right=1.000 estop=clear heartbeat=ok cmd=active
+cmd_vel diagnostic handling=handled reason=cmd_vel accepted mode=drive seq=42 vx=1.000 wz=0.000 brake=false coast=false ttl_ms=300 left=1.000 right=1.000 estop=clear heartbeat=ok cmd=active
 ```
 
 If a command is rejected, the reason should be visible. Common reasons include
@@ -335,6 +368,34 @@ If a command is rejected, the reason should be visible. Common reasons include
 The BLE `cmd_vel` parser is intentionally limited. It is not a full JSON parser
 and does not implement Mission Profile authorization or schema hash checks in
 firmware.
+
+BLE telemetry notify check:
+
+1. Connect from the web app with Web Bluetooth.
+2. Confirm the UI shows connected and heartbeat running.
+3. Press Forward, Back, Left, and Right. The web UI should show Pico `ack`
+   messages for accepted commands.
+4. Press E-stop. The web UI should show `estop=latched` and
+   `safety_stop=true` after the next `safety_state` notify.
+5. While E-stop is latched, press Forward and confirm the web UI shows a Pico
+   `reject` with `reason=estop_latched`.
+6. Send `r` from Serial mock to clear E-stop and confirm the next
+   `safety_state` returns to `estop=clear`.
+7. Disconnect the web app and confirm heartbeat timeout eventually returns the
+   firmware to safety stop.
+
+Telemetry notify currently sends minimal JSON on the telemetry characteristic:
+
+```json
+{"msg_type":"ack","seq":42,"accepted":true,"reason":"cmd_vel accepted"}
+{"msg_type":"reject","seq":43,"accepted":false,"reason":"estop_latched"}
+{"msg_type":"safety_state","estop":"clear","heartbeat":"ok","cmd":"active","safety_stop":false,"now_ms":1234}
+```
+
+Heartbeat command ack is intentionally omitted to avoid flooding the BLE notify
+path. `safety_state` is sent at about 1 Hz. UI telemetry display is diagnostic
+only; firmware-side E-stop, heartbeat timeout, TTL expiry, and motor stop remain
+local Safety Kernel responsibilities.
 
 BLE heartbeat check:
 

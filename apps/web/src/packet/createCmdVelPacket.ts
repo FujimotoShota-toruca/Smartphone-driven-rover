@@ -7,6 +7,10 @@ export interface CreateCmdVelPacketOptions {
   vx: number;
   wz: number;
   brake?: boolean;
+  mode?: "manual_pwm";
+  leftPwm?: number;
+  rightPwm?: number;
+  coast?: boolean;
   ttlMs: number;
   schema: PacketSchema;
   nowMs?: number;
@@ -29,6 +33,10 @@ export function createCmdVelPacket(
       vx: options.vx,
       wz: options.wz,
       brake: options.brake ?? false,
+      ...(options.mode ? { mode: options.mode } : {}),
+      ...(options.leftPwm === undefined ? {} : { left_pwm: options.leftPwm }),
+      ...(options.rightPwm === undefined ? {} : { right_pwm: options.rightPwm }),
+      ...(options.coast === undefined ? {} : { coast: options.coast }),
     },
   };
 }

@@ -154,25 +154,40 @@ class MockTransport : public RoverTransport {
   bool buildMotionPacket(char motion, RoverPacket& packet) {
     packet = nextPacket();
     packet.type = RoverMessageType::CmdVel;
+    packet.cmdVel.ttlMs = 300;
 
     switch (motion) {
       case 'w':
-        packet.cmdVel = CmdVel{0.5f, 0.0f, false, 300};
+        packet.cmdVel.vx = 0.5f;
+        packet.cmdVel.wz = 0.0f;
+        packet.cmdVel.brake = false;
         return true;
       case 's':
-        packet.cmdVel = CmdVel{-0.5f, 0.0f, false, 300};
+        packet.cmdVel.vx = -0.5f;
+        packet.cmdVel.wz = 0.0f;
+        packet.cmdVel.brake = false;
         return true;
       case 'a':
-        packet.cmdVel = CmdVel{0.0f, -0.5f, false, 300};
+        packet.cmdVel.vx = 0.0f;
+        packet.cmdVel.wz = -0.5f;
+        packet.cmdVel.brake = false;
         return true;
       case 'd':
-        packet.cmdVel = CmdVel{0.0f, 0.5f, false, 300};
+        packet.cmdVel.vx = 0.0f;
+        packet.cmdVel.wz = 0.5f;
+        packet.cmdVel.brake = false;
         return true;
       case 'x':
-        packet.cmdVel = CmdVel{0.0f, 0.0f, true, 300};
+        packet.cmdVel.vx = 0.0f;
+        packet.cmdVel.wz = 0.0f;
+        packet.cmdVel.brake = true;
+        packet.cmdVel.coast = false;
         return true;
       case 'n':
-        packet.cmdVel = CmdVel{0.0f, 0.0f, false, 300};
+        packet.cmdVel.vx = 0.0f;
+        packet.cmdVel.wz = 0.0f;
+        packet.cmdVel.brake = false;
+        packet.cmdVel.coast = true;
         return true;
       default:
         packet = RoverPacket{};

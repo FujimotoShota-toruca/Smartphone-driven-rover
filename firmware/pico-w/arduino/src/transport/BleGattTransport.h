@@ -18,8 +18,12 @@ class BleGattTransport : public RoverTransport {
 
   bool hasPacket() const;
   bool readPacket(RoverPacket& packet);
-  void sendAck(const RoverPacket& packet);
+  void sendAck(const RoverPacket& packet, const char* reason);
   void sendReject(const RoverPacket& packet, const char* reason);
+  void sendSafetyState(const char* estop, const char* heartbeat, const char* cmd,
+                       bool safetyStop, uint32_t nowMs,
+                       const char* activeMode = "none", float leftPwm = 0.0f,
+                       float rightPwm = 0.0f);
   bool isEnabled() const;
 
  private:
@@ -36,6 +40,7 @@ class BleGattTransport : public RoverTransport {
 
   bool enqueue(const RoverPacket& packet);
   void notifyPacket(const RoverPacket& packet, const char* label);
+  void notifyJson(const char* json, const char* label);
 };
 
 }  // namespace rover

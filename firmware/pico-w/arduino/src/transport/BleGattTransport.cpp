@@ -2,6 +2,7 @@
 
 #include "../config/RoverBuildConfig.h"
 
+#include <stdio.h>
 #include <string.h>
 
 #if defined(ROVER_ENABLE_BLE_GATT)
@@ -37,7 +38,9 @@ bool commandWritePending = false;
 bool commandWriteTruncated = false;
 uint32_t lastHeartbeatLogAtMs = 0;
 
-bool processPendingCommandWriteDebug(RoverPacket& packet);
+bool processPendingCommandWriteDebug(RoverPacket& packet,
+                                     const char*& rejectReason,
+                                     uint32_t& rejectSeq);
 void printPayloadPreview(const uint8_t* data, size_t length, bool truncated);
 
 void onCommandWrite(BLECharacteristic* characteristic) {
@@ -61,7 +64,11 @@ void onCommandWrite(BLECharacteristic* characteristic) {
   commandWritePending = true;
 }
 
-bool processPendingCommandWriteDebug(RoverPacket& packet) {
+bool processPendingCommandWriteDebug(RoverPacket& packet,
+                                     const char*& rejectReason,
+                                     uint32_t& rejectSeq) {
+  rejectReason = nullptr;
+  rejectSeq = 0;
   if (!commandWritePending) {
     return false;
   }
@@ -76,7 +83,9 @@ bool processPendingCommandWriteDebug(RoverPacket& packet) {
     if (!commandDebugParser.parse(commandWriteBuffer, commandWriteLength, packet)) {
       Serial.print("BLE command handling=rejected ");
       const char* reason = commandDebugParser.lastError();
-      Serial.println(reason[0] == '\0' ? "invalid_json_debug_parser" : reason);
+      rejectReason = reason[0] == '\0' ? "invalid_json_debug_parser" : reason;
+      rejectSeq = packet.seq;
+      Serial.println(rejectReason);
       return false;
     }
 
@@ -97,6 +106,7 @@ bool processPendingCommandWriteDebug(RoverPacket& packet) {
   Serial.println(msgTypeName);
 
   if (commandWriteTruncated) {
+    rejectReason = "truncated_payload";
     Serial.println("BLE command handling=rejected truncated_payload");
     return false;
   }
@@ -104,7 +114,9 @@ bool processPendingCommandWriteDebug(RoverPacket& packet) {
   if (!commandDebugParser.parse(commandWriteBuffer, commandWriteLength, packet)) {
     Serial.print("BLE command handling=rejected ");
     const char* reason = commandDebugParser.lastError();
-    Serial.println(reason[0] == '\0' ? "invalid_json_debug_parser" : reason);
+    rejectReason = reason[0] == '\0' ? "invalid_json_debug_parser" : reason;
+    rejectSeq = packet.seq;
+    Serial.println(rejectReason);
     return false;
   }
 
@@ -210,10 +222,19 @@ void BleGattTransport::begin() {
 bool BleGattTransport::poll(RoverPacket& packet) {
 #if defined(ROVER_ENABLE_BLE_GATT)
   RoverPacket pendingPacket;
-  if (processPendingCommandWriteDebug(pendingPacket)) {
+  const char* rejectReason = nullptr;
+  uint32_t rejectSeq = 0;
+  if (processPendingCommandWriteDebug(pendingPacket, rejectReason, rejectSeq)) {
     if (!enqueue(pendingPacket) && debugStream_) {
       debugStream_->println("BLE command handling=rejected queue_full");
+      RoverPacket reject;
+      reject.relatedSeq = pendingPacket.seq;
+      sendReject(reject, "queue_full");
     }
+  } else if (rejectReason != nullptr) {
+    RoverPacket reject;
+    reject.relatedSeq = rejectSeq;
+    sendReject(reject, rejectReason);
   }
 #endif
   return readPacket(packet);
@@ -232,16 +253,34 @@ bool BleGattTransport::readPacket(RoverPacket& packet) {
   return true;
 }
 
-void BleGattTransport::sendAck(const RoverPacket& packet) {
-  notifyPacket(packet, "ack");
+void BleGattTransport::sendAck(const RoverPacket& packet, const char* reason) {
+  char json[128] = {};
+  snprintf(json, sizeof(json),
+           "{\"msg_type\":\"ack\",\"seq\":%lu,\"accepted\":true,\"reason\":\"%s\"}",
+           static_cast<unsigned long>(packet.relatedSeq), reason);
+  notifyJson(json, "ack");
 }
 
 void BleGattTransport::sendReject(const RoverPacket& packet, const char* reason) {
-  if (debugStream_) {
-    debugStream_->print("BLE reject reason=");
-    debugStream_->println(reason);
-  }
-  notifyPacket(packet, "reject");
+  char json[144] = {};
+  snprintf(json, sizeof(json),
+           "{\"msg_type\":\"reject\",\"seq\":%lu,\"accepted\":false,\"reason\":\"%s\"}",
+           static_cast<unsigned long>(packet.relatedSeq), reason);
+  notifyJson(json, "reject");
+}
+
+void BleGattTransport::sendSafetyState(const char* estop, const char* heartbeat,
+                                       const char* cmd, bool safetyStop,
+                                       uint32_t nowMs, const char* activeMode,
+                                       float leftPwm, float rightPwm) {
+  char json[256] = {};
+  snprintf(json, sizeof(json),
+           "{\"msg_type\":\"safety_state\",\"estop\":\"%s\",\"heartbeat\":\"%s\","
+           "\"cmd\":\"%s\",\"safety_stop\":%s,\"now_ms\":%lu,"
+           "\"active_mode\":\"%s\",\"left_pwm\":%.3f,\"right_pwm\":%.3f}",
+           estop, heartbeat, cmd, safetyStop ? "true" : "false",
+           static_cast<unsigned long>(nowMs), activeMode, leftPwm, rightPwm);
+  notifyJson(json, "safety_state");
 }
 
 void BleGattTransport::sendTelemetry(const RoverPacket& packet) {
@@ -262,6 +301,13 @@ bool BleGattTransport::enqueue(const RoverPacket& packet) {
 }
 
 void BleGattTransport::notifyPacket(const RoverPacket& packet, const char* label) {
+  char json[96] = {};
+  snprintf(json, sizeof(json), "{\"msg_type\":\"%s\",\"seq\":%lu}", label,
+           static_cast<unsigned long>(packet.seq));
+  notifyJson(json, label);
+}
+
+void BleGattTransport::notifyJson(const char* json, const char* label) {
   (void)connected_;
   if (!enabled_) {
     return;
@@ -270,16 +316,15 @@ void BleGattTransport::notifyPacket(const RoverPacket& packet, const char* label
   if (debugStream_) {
     debugStream_->print("BLE ");
     debugStream_->print(label);
-    debugStream_->print(" seq=");
-    debugStream_->println(packet.seq);
+    debugStream_->print(" notify=");
+    debugStream_->println(json);
   }
 
 #if defined(ROVER_ENABLE_BLE_GATT)
-  const char* value = "ble-gatt-skeleton";
   telemetryNotifyCharacteristic.setValue(
-      reinterpret_cast<const uint8_t*>(value), strlen(value));
+      reinterpret_cast<const uint8_t*>(json), strlen(json));
 #else
-  (void)packet;
+  (void)json;
   (void)label;
 #endif
 }

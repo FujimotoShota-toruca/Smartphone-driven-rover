@@ -6,6 +6,7 @@ import { WebBluetoothTransport } from "../src/transport/WebBluetoothTransport";
 import type {
   BluetoothApi,
   BluetoothRemoteGattCharacteristicLike,
+  BluetoothCharacteristicValueChangedEventLike,
 } from "../src/transport/WebBluetoothTransport";
 
 const schema = {
@@ -137,20 +138,50 @@ describe("WebBluetoothTransport", () => {
     await expect(secondSend).resolves.toBeUndefined();
     expect(maxActiveWrites).toBe(1);
   });
+
+  it("forwards telemetry notify values to the telemetry handler", async () => {
+    const commandWrite = createCharacteristic();
+    const telemetryNotify = createCharacteristic();
+    const transport = await createConnectedTransport(commandWrite, telemetryNotify);
+    const telemetryHandler = vi.fn();
+    transport.setTelemetryHandler(telemetryHandler);
+
+    telemetryNotify.emit('{"msg_type":"ack","seq":1,"accepted":true,"reason":"handled"}');
+
+    expect(telemetryNotify.startNotifications).toHaveBeenCalled();
+    expect(telemetryHandler).toHaveBeenCalledWith(
+      '{"msg_type":"ack","seq":1,"accepted":true,"reason":"handled"}',
+    );
+  });
 });
 
-function createCharacteristic(): BluetoothRemoteGattCharacteristicLike {
-  const characteristic: BluetoothRemoteGattCharacteristicLike = {
+interface TestCharacteristic extends BluetoothRemoteGattCharacteristicLike {
+  emit(message: string): void;
+}
+
+function createCharacteristic(): TestCharacteristic {
+  let listener: ((event: BluetoothCharacteristicValueChangedEventLike) => void) | null = null;
+  const characteristic: TestCharacteristic = {
     writeValue: vi.fn(async () => undefined),
     startNotifications: vi.fn(async () => characteristic),
+    addEventListener: vi.fn((_type, nextListener) => {
+      listener = nextListener;
+    }),
+    removeEventListener: vi.fn(() => {
+      listener = null;
+    }),
+    emit(message: string) {
+      const bytes = new TextEncoder().encode(message);
+      listener?.({ target: { value: new DataView(bytes.buffer) } });
+    },
   };
   return characteristic;
 }
 
 async function createConnectedTransport(
   commandWrite: BluetoothRemoteGattCharacteristicLike,
+  telemetryNotify: BluetoothRemoteGattCharacteristicLike = createCharacteristic(),
 ): Promise<WebBluetoothTransport> {
-  const telemetryNotify = createCharacteristic();
   const statusRead = createCharacteristic();
   const getCharacteristic = vi.fn(async (uuid: string) => {
     if (uuid === BLE_GATT_UUIDS.commandWriteCharacteristic) {
