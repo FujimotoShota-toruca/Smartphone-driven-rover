@@ -133,6 +133,20 @@ select {
   color: #6f3f00;
 }
 
+.telemetrySummary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 6px 12px;
+  align-self: stretch;
+  color: #354758;
+}
+
+.telemetrySummary p {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+}
+
 .manualPanel {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(220px, 0.5fr);
@@ -238,6 +252,12 @@ select {
   background: #fff2d6;
   color: #5e3700;
   font-weight: 800;
+}
+
+.commandHint {
+  color: #4d6270;
+  font-size: 0.9rem;
+  line-height: 1.4;
 }
 
 .detailsGrid {

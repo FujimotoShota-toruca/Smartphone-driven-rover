@@ -15,9 +15,7 @@ import type {
 
 import { sendHeartbeatIfIdle } from "./heartbeat/HeartbeatScheduler";
 import {
-  DEFAULT_MANUAL_PWM_PERCENT,
   createManualDriveCommand,
-  defaultManualButtonAssignments,
   manualDriveCommands,
   manualDriveCommandCodes,
   manualDriveDirections,
@@ -25,6 +23,12 @@ import {
   type ManualDriveDirection,
   type ManualPwmCommand,
 } from "./manual/manualDriveCommands";
+import {
+  loadManualDriveSettings,
+  manualDriveSettingsKeys,
+  saveButtonAssignments,
+  savePwmPercent,
+} from "./manual/ManualDriveSettingsStorage";
 import { createCmdVelPacket } from "./packet/createCmdVelPacket";
 import { createEmergencyStopPacket } from "./packet/createEmergencyStopPacket";
 import { createHeartbeatPacket } from "./packet/createHeartbeatPacket";
@@ -105,9 +109,15 @@ export function App() {
   const [lastHeartbeatAt, setLastHeartbeatAt] = useState<number | null>(null);
   const [activeManualCommand, setActiveManualCommand] = useState("none");
   const [lastManualCommandAt, setLastManualCommandAt] = useState<number | null>(null);
-  const [leftPwmPercent, setLeftPwmPercent] = useState(DEFAULT_MANUAL_PWM_PERCENT);
-  const [rightPwmPercent, setRightPwmPercent] = useState(DEFAULT_MANUAL_PWM_PERCENT);
-  const [buttonAssignments, setButtonAssignments] = useState(defaultManualButtonAssignments);
+  const [leftPwmPercent, setLeftPwmPercent] = useState(
+    () => loadManualDriveSettings().leftPwmPercent,
+  );
+  const [rightPwmPercent, setRightPwmPercent] = useState(
+    () => loadManualDriveSettings().rightPwmPercent,
+  );
+  const [buttonAssignments, setButtonAssignments] = useState(
+    () => loadManualDriveSettings().buttonAssignments,
+  );
   const [lastAckReject, setLastAckReject] = useState<AckRejectTelemetry | null>(null);
   const [safetyState, setSafetyState] = useState<SafetyStateTelemetry | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -194,12 +204,14 @@ export function App() {
   }
 
   async function connect() {
+    setActiveManualCommand("none");
     await transportRef.current.connect();
     setConnected(true);
     appendLog("system", `${transportLabel(transportMode)} connected`);
   }
 
   async function disconnect() {
+    setActiveManualCommand("none");
     await transportRef.current.disconnect();
     setConnected(false);
     heartbeatInFlightRef.current = false;
@@ -218,6 +230,7 @@ export function App() {
       heartbeatInFlightRef.current = false;
     }
 
+    setActiveManualCommand("none");
     transportRef.current =
       mode === "web_bluetooth" ? new WebBluetoothTransport() : new MockRoverTransport();
     transportRef.current.setTelemetryHandler?.(handleTelemetryMessage);
@@ -369,10 +382,14 @@ export function App() {
   }
 
   function changeButtonAssignment(button: ManualDriveDirection, direction: ManualDriveDirection) {
-    setButtonAssignments((current) => ({
-      ...current,
-      [button]: direction,
-    }));
+    setButtonAssignments((current) => {
+      const next = {
+        ...current,
+        [button]: direction,
+      };
+      saveButtonAssignments(undefined, next);
+      return next;
+    });
     appendLog("system", `${capitalizeDirection(button)} button sends ${capitalizeDirection(direction)}`);
   }
 
@@ -426,31 +443,29 @@ export function App() {
               : ` / last ${new Date(lastHeartbeatAt).toLocaleTimeString()}`}
           </p>
         )}
-        <p className="transportNotice">
-          Active manual command={activeManualCommand}
-          {lastManualCommandAt === null
-            ? ""
-            : ` / last ${new Date(lastManualCommandAt).toLocaleTimeString()}`}
-        </p>
-        <p className="transportNotice">
-          Pico safety estop={safetyState?.estop ?? "unknown"} heartbeat=
-          {safetyState?.heartbeat ?? "unknown"} safety_stop=
-          {safetyState ? String(safetyState.safety_stop) : "unknown"}
-        </p>
-        <p className="transportNotice">
-          Pico active mode={safetyState?.active_mode ?? "unknown"} left=
-          {safetyState?.left_pwm?.toFixed(2) ?? "unknown"} right=
-          {safetyState?.right_pwm?.toFixed(2) ?? "unknown"}
-        </p>
-        <p className="transportNotice">
-          Last ack/reject{" "}
-          {lastAckReject
-            ? `${lastAckReject.msg_type} seq=${lastAckReject.seq} reason=${lastAckReject.reason}`
-            : "none"}
-        </p>
-        <p className="transportNotice">
-          Last safety timestamp {safetyState ? `${safetyState.now_ms} ms` : "none"}
-        </p>
+        <div className="telemetrySummary" aria-label="Rover telemetry summary">
+          <p>estop={safetyState?.estop ?? "unknown"}</p>
+          <p>heartbeat={safetyState?.heartbeat ?? "unknown"}</p>
+          <p>safety_stop={safetyState ? String(safetyState.safety_stop) : "unknown"}</p>
+          <p>active_mode={safetyState?.active_mode ?? "unknown"}</p>
+          <p>
+            pwm left={safetyState?.left_pwm?.toFixed(2) ?? "unknown"} right=
+            {safetyState?.right_pwm?.toFixed(2) ?? "unknown"}
+          </p>
+          <p>
+            last ack/reject=
+            {lastAckReject
+              ? `${lastAckReject.msg_type}:${lastAckReject.reason}`
+              : "none"}
+          </p>
+          <p>last telemetry={safetyState ? `${safetyState.now_ms} ms` : "none"}</p>
+          <p>
+            active command={activeManualCommand}
+            {lastManualCommandAt === null
+              ? ""
+              : ` @ ${new Date(lastManualCommandAt).toLocaleTimeString()}`}
+          </p>
+        </div>
       </section>
 
       <section className="identityPanel" aria-label="Rover identity">
@@ -474,7 +489,15 @@ export function App() {
               max="100"
               step="1"
               value={leftPwmPercent}
-              onChange={(event) => setLeftPwmPercent(Number(event.target.value))}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setLeftPwmPercent(value);
+                savePwmPercent(
+                  undefined,
+                  manualDriveSettingsKeys.leftPwmPercent,
+                  value,
+                );
+              }}
             />
           </label>
           <label>
@@ -485,7 +508,15 @@ export function App() {
               max="100"
               step="1"
               value={rightPwmPercent}
-              onChange={(event) => setRightPwmPercent(Number(event.target.value))}
+              onChange={(event) => {
+                const value = Number(event.target.value);
+                setRightPwmPercent(value);
+                savePwmPercent(
+                  undefined,
+                  manualDriveSettingsKeys.rightPwmPercent,
+                  value,
+                );
+              }}
             />
           </label>
         </div>
@@ -551,6 +582,9 @@ export function App() {
           >
             Neutral
           </button>
+          <p className="commandHint">
+            Stop=brake / Neutral=coast / E-stop=latch stop / Reset=clear only
+          </p>
         </div>
       </section>
 

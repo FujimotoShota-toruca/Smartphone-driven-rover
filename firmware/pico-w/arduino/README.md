@@ -323,6 +323,62 @@ command is sent once and the Pico W holds that active manual output while
 heartbeat is ok and E-stop is clear. Stop, Neutral, E-stop, heartbeat timeout,
 or disconnect clear the active output.
 
+Lv1 BLE manual drive has been verified on the real rover with the current Web
+UI and Pico W firmware path. Use this sequence as the reproducible check:
+
+1. In Arduino IDE, enable Bluetooth for arduino-pico and write the BLE-enabled
+   firmware build.
+2. Start the web app and choose Web Bluetooth.
+3. Connect to `SmartphoneRover-PicoW`.
+4. Confirm heartbeat is running and the web UI shows `heartbeat=ok` after the
+   next `safety_state` notify.
+5. Adjust Left output / Right output sliders. The values are saved in
+   `localStorage` and restored on the next page load.
+6. If needed, open the bottom Command assignment panel and adjust the button
+   mapping. These assignments are also saved in `localStorage`.
+7. Press Forward / Back / Left / Right and confirm the physical direction.
+8. Press Stop and confirm brake stop.
+9. Press Neutral and confirm coast / output-off.
+10. Press E-stop and confirm `estop=latched` and motor stop.
+11. Press Forward while latched and confirm a reject is shown.
+12. Press Reset E-stop and confirm `estop=clear`.
+13. Confirm motors do not restart after Reset E-stop.
+14. Press Forward again and confirm motion starts only after this new command.
+15. Disconnect and confirm heartbeat timeout returns the firmware to safety
+    stop.
+16. Keep Serial mock fallback available and confirm `h`, `hw`, `e`, `r`, and
+    `?` still work when using the Serial mock debug path.
+
+Stop / Neutral / E-stop / Reset E-stop have distinct meanings:
+
+- Stop: brake stop command.
+- Neutral: coast / output off command.
+- E-stop: latched emergency stop.
+- Reset E-stop: latch clear only. It does not resume drive and does not restore
+  the previously active manual PWM command.
+
+The web app stores these local settings in browser `localStorage`:
+
+- `left_pwm_percent`
+- `right_pwm_percent`
+- `manual_button_assignments`
+
+If saved values are out of range, malformed, or refer to unknown button
+assignments, the web app falls back to safe defaults: 50 percent PWM and the
+default Forward / Back / Left / Right mapping. Connection, reconnection, and
+Reset E-stop start with `active manual command=none` and never auto-send a drive
+command.
+
+Known Lv1 limitations:
+
+- Manual PWM is open-loop output, not physical velocity control.
+- There is no encoder, PID, or wheel-speed feedback in this path.
+- Web Bluetooth depends on Android Chrome or desktop Chrome support.
+- BLE disconnect stops through heartbeat timeout rather than an immediate
+  connection-state callback in the motor path.
+- Tanegashima competition autonomy and Mission Profile based automatic control
+  are future work outside this Lv1 manual drive path.
+
 BLE E-stop check:
 
 1. Connect from the web app with Web Bluetooth.
