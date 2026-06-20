@@ -46,6 +46,16 @@ Actions tab. It performs:
 5. Upload of `apps/web/dist` as the Pages artifact
 6. Deploy to GitHub Pages
 
+The workflow intentionally does not run `actions/configure-pages`. For this
+repository, enable Pages from the GitHub UI first:
+
+```text
+Settings -> Pages -> Build and deployment -> Source: GitHub Actions
+```
+
+If a Pages action reports `Get Pages site failed` or `Not Found`, verify this
+setting and rerun the workflow.
+
 For GitHub Pages, the workflow sets:
 
 ```text
