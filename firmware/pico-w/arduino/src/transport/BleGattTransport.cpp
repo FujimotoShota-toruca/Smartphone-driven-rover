@@ -128,6 +128,10 @@ bool processPendingCommandWriteDebug(RoverPacket& packet,
     Serial.println("BLE command handling=handled heartbeat");
     return true;
   }
+  if (msgType == RoverMessageType::ResetEstop) {
+    Serial.println("BLE command handling=handled reset_estop");
+    return true;
+  }
   if (msgType == RoverMessageType::CmdVel) {
     Serial.print("BLE command handling=handled cmd_vel vx=");
     Serial.print(packet.cmdVel.vx, 3);

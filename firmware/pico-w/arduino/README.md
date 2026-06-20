@@ -302,6 +302,10 @@ commands:
 - Stop: `left_pwm=0.0`, `right_pwm=0.0`, `brake=true`.
 - Neutral / coast: `left_pwm=0.0`, `right_pwm=0.0`, `brake=false`,
   `coast=true`.
+- Reset E-stop sends `msg_type=reset_estop`. It clears the E-stop latch through
+  the same `PacketHandler` path as the Serial mock `r` command. It also keeps
+  active manual output cleared, so motors do not restart until the operator
+  sends a new drive command.
 
 The current test rover wiring has a direction/sign mismatch relative to the web
 button labels. For the smallest and least confusing Lv1 change, the web manual
@@ -350,8 +354,11 @@ BLE motion command check:
     should go off if the hardware reflects LOW/LOW inputs.
 11. Press E-stop and confirm the motors stop and status shows `estop=latched`.
 12. While E-stop is latched, confirm drive commands are rejected.
-13. Send `r` from Serial mock to clear E-stop.
-14. Disconnect the web app and confirm heartbeat timeout returns the firmware
+13. Press Reset E-stop in the web UI and confirm status returns to
+    `estop=clear`.
+14. Confirm the motors do not restart immediately after reset.
+15. Press Forward again and confirm drive resumes only after this new command.
+16. Disconnect the web app and confirm heartbeat timeout returns the firmware
     to safety stop.
 
 The expected `cmd_vel` diagnostic line includes handling result, reject reason,
@@ -379,8 +386,8 @@ BLE telemetry notify check:
    `safety_stop=true` after the next `safety_state` notify.
 5. While E-stop is latched, press Forward and confirm the web UI shows a Pico
    `reject` with `reason=estop_latched`.
-6. Send `r` from Serial mock to clear E-stop and confirm the next
-   `safety_state` returns to `estop=clear`.
+6. Press Reset E-stop in the web UI and confirm the next `safety_state` returns
+   to `estop=clear`.
 7. Disconnect the web app and confirm heartbeat timeout eventually returns the
    firmware to safety stop.
 

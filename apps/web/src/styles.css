@@ -213,7 +213,7 @@ select {
 
 .safetyControls {
   display: grid;
-  grid-template-rows: 1fr 1fr;
+  grid-template-rows: repeat(3, 1fr);
   gap: 10px;
 }
 
@@ -229,6 +229,14 @@ select {
   min-height: 84px;
   border-color: #4d6270;
   background: #eef3f5;
+  font-weight: 800;
+}
+
+.resetEstopButton {
+  min-height: 84px;
+  border-color: #a86816;
+  background: #fff2d6;
+  color: #5e3700;
   font-weight: 800;
 }
 

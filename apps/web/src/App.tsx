@@ -28,6 +28,7 @@ import {
 import { createCmdVelPacket } from "./packet/createCmdVelPacket";
 import { createEmergencyStopPacket } from "./packet/createEmergencyStopPacket";
 import { createHeartbeatPacket } from "./packet/createHeartbeatPacket";
+import { createResetEstopPacket } from "./packet/createResetEstopPacket";
 import { parseTelemetryMessage, type AckRejectTelemetry, type SafetyStateTelemetry } from "./telemetry/TelemetryMessage";
 import { MockRoverTransport } from "./transport/MockRoverTransport";
 import type { RoverTransport } from "./transport/RoverTransport";
@@ -332,6 +333,25 @@ export function App() {
     );
   }
 
+  async function sendResetEstop() {
+    setActiveManualCommand("none");
+    const packet = createResetEstopPacket({
+      missionId,
+      roverId,
+      seq: nextSeq(),
+      reason: "operator_reset",
+      schema,
+    });
+
+    try {
+      await transportRef.current.send(packet);
+      setLastPacket(packet);
+      appendLog("sent", `reset_estop sent seq=${packet.seq}`);
+    } catch (error) {
+      appendLog("rejected", error instanceof Error ? error.message : String(error));
+    }
+  }
+
   function sendExplicitStop() {
     void sendManualPwmCommand(manualDriveCommands.stop, "stop");
   }
@@ -355,6 +375,8 @@ export function App() {
     }));
     appendLog("system", `${capitalizeDirection(button)} button sends ${capitalizeDirection(direction)}`);
   }
+
+  const estopLatched = safetyState?.estop === "latched";
 
   return (
     <main className="appShell">
@@ -513,6 +535,14 @@ export function App() {
             onClick={sendEmergencyStop}
           >
             E-stop
+          </button>
+          <button
+            type="button"
+            className="resetEstopButton"
+            onClick={() => void sendResetEstop()}
+            disabled={!estopLatched}
+          >
+            Reset E-stop
           </button>
           <button
             type="button"
