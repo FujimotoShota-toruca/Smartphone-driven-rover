@@ -75,7 +75,8 @@ describe("WebBluetoothTransport", () => {
       getPrimaryService,
     };
     server.connect.mockResolvedValue(server);
-    const requestDevice = vi.fn(async () => ({
+    const requestDevice = vi.fn(async (_options: Parameters<BluetoothApi["requestDevice"]>[0]) => ({
+      name: "#01-SDRover",
       gatt: server,
     }));
     const bluetooth: BluetoothApi = { requestDevice };
@@ -92,6 +93,9 @@ describe("WebBluetoothTransport", () => {
       filters: [{ services: [BLE_GATT_UUIDS.roverControlService] }],
       optionalServices: [BLE_GATT_UUIDS.roverControlService],
     });
+    expect(requestDevice.mock.calls[0][0]).not.toHaveProperty("name");
+    expect(requestDevice.mock.calls[0][0]).not.toHaveProperty("namePrefix");
+    expect(transport.getConnectedDeviceName()).toBe("#01-SDRover");
     expect(getCharacteristic).toHaveBeenCalledWith(
       BLE_GATT_UUIDS.commandWriteCharacteristic,
     );

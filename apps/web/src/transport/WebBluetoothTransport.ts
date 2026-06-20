@@ -22,6 +22,7 @@ export interface BluetoothRequestDeviceOptions {
 }
 
 export interface BluetoothDeviceLike {
+  name?: string;
   gatt?: BluetoothRemoteGattServerLike;
 }
 
@@ -175,6 +176,13 @@ export class WebBluetoothTransport implements RoverTransport {
 
   public isConnected(): boolean {
     return Boolean(this.#server?.connected && this.#commandWriteCharacteristic);
+  }
+
+  public getConnectedDeviceName(): string | null {
+    if (!this.isConnected()) {
+      return null;
+    }
+    return this.#device?.name ?? "Unknown BLE device";
   }
 
   public isWriteInProgress(): boolean {

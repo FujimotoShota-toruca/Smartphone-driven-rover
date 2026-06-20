@@ -105,6 +105,7 @@ export function App() {
   const [missionId, setMissionId] = useState("engineering_rover_demo");
   const [roverId, setRoverId] = useState("rover_01");
   const [connected, setConnected] = useState(false);
+  const [connectedDeviceName, setConnectedDeviceName] = useState<string | null>(null);
   const [heartbeatRunning, setHeartbeatRunning] = useState(false);
   const [lastHeartbeatAt, setLastHeartbeatAt] = useState<number | null>(null);
   const [activeManualCommand, setActiveManualCommand] = useState("none");
@@ -207,6 +208,7 @@ export function App() {
     setActiveManualCommand("none");
     await transportRef.current.connect();
     setConnected(true);
+    setConnectedDeviceName(transportRef.current.getConnectedDeviceName?.() ?? null);
     appendLog("system", `${transportLabel(transportMode)} connected`);
   }
 
@@ -214,6 +216,7 @@ export function App() {
     setActiveManualCommand("none");
     await transportRef.current.disconnect();
     setConnected(false);
+    setConnectedDeviceName(null);
     heartbeatInFlightRef.current = false;
     setHeartbeatRunning(false);
     appendLog("system", `${transportLabel(transportMode)} disconnected`);
@@ -227,6 +230,7 @@ export function App() {
     if (connected) {
       await transportRef.current.disconnect();
       setConnected(false);
+      setConnectedDeviceName(null);
       heartbeatInFlightRef.current = false;
     }
 
@@ -435,6 +439,12 @@ export function App() {
             Web Bluetooth is not available in this browser. Use Mock mode.
           </p>
         )}
+        <p className="transportNotice">
+          Connected device: {connectedDeviceName ?? "No device connected"}
+        </p>
+        <p className="transportNotice">
+          Android Chrome: Connectを押して #xx-SDRover を選択してください
+        </p>
         {transportMode === "web_bluetooth" && (
           <p className="transportNotice">
             Heartbeat {heartbeatRunning ? "running" : "stopped"}

@@ -70,16 +70,18 @@ Expected Arduino IDE setup:
 - Serial Monitor baud rate: `115200`.
 - Serial Monitor line ending: `Newline`.
 
-Serial mock is the default Arduino IDE debug build. For the experimental BLE
-advertise-only build:
+Serial mock remains available as the fallback debug path. For the BLE-enabled
+Lv1 manual drive build:
 
 1. Enable `Tools -> IP/Bluetooth Stack` with Bluetooth.
 2. Open `src/config/RoverBuildConfig.h`.
-3. Uncomment `#define ROVER_ENABLE_BLE_GATT`.
+3. Set exactly one `ROVER_BLE_DEVICE_NAME`, such as `#01-SDRover`.
 4. Upload from Arduino IDE.
-5. Scan from a phone or PC BLE scanner for `SmartphoneRover-PicoW`.
+5. Scan from Android Chrome or a BLE scanner for `#01-SDRover`.
 
-Keep the define commented for normal Serial mock debugging.
+For a multi-rover demo, flash each rover with a unique name such as
+`#01-SDRover`, `#02-SDRover`, or `#03-SDRover`. Service and characteristic UUIDs
+must remain unchanged across all rovers.
 
 After upload, the firmware starts in a stopped state. This is intentional. The
 current mock transport reads one line at a time from Serial Monitor. Send each
@@ -175,11 +177,12 @@ The BLE contract follows `docs/design/ble_gatt_contract.md`:
 - Optional Status Read Characteristic UUID:
   `7b5a0003-6f5a-4d1d-9c0a-5b4f8b7a0000`.
 
-The current BLE code is a characteristic skeleton experiment. It registers the
-rover control service UUID, adds command write / telemetry notify / status read
-characteristics, and starts advertising as `SmartphoneRover-PicoW`. It does not
-yet parse command payloads or produce real telemetry. Serial mock remains the
-default bring-up transport.
+The current BLE code registers the rover control service UUID, adds command
+write / telemetry notify / status read characteristics, and starts advertising
+as `ROVER_BLE_DEVICE_NAME` such as `#01-SDRover`. It supports the Lv1 manual
+drive path: heartbeat, emergency_stop, reset_estop, manual PWM cmd_vel, and
+minimal telemetry notify for ack / reject / safety_state. Serial mock remains
+the fallback bring-up transport.
 
 Arduino IDE requirements:
 
@@ -208,7 +211,7 @@ BTstack notes:
 
 Bluetooth LE Explorer check:
 
-1. Connect to `SmartphoneRover-PicoW`.
+1. Connect to the configured device name, for example `#01-SDRover`.
 2. Confirm custom service UUID
    `7b5a0000-6f5a-4d1d-9c0a-5b4f8b7a0000`.
 3. Confirm command write characteristic
@@ -230,16 +233,15 @@ BLE disconnect must be treated like heartbeat loss and must lead to motor stop.
 
 Advertise-only expected result:
 
-- A BLE scanner can see `SmartphoneRover-PicoW`.
+- A BLE scanner can see the configured name, for example `#01-SDRover`.
 - The advertised service UUID matches
   `7b5a0000-6f5a-4d1d-9c0a-5b4f8b7a0000`.
 
 Still not implemented over BLE:
 
-- Full JSON parser.
 - Mission Profile authorization.
 - Schema hash verification.
-- Real `ack` / `reject` notify payloads.
+- Full production JSON parser beyond the limited Lv1 debug/MVP parser.
 
 BLE command write debug check:
 
@@ -329,7 +331,7 @@ UI and Pico W firmware path. Use this sequence as the reproducible check:
 1. In Arduino IDE, enable Bluetooth for arduino-pico and write the BLE-enabled
    firmware build.
 2. Start the web app and choose Web Bluetooth.
-3. Connect to `SmartphoneRover-PicoW`.
+3. Connect to the matching rover name, for example `#01-SDRover`.
 4. Confirm heartbeat is running and the web UI shows `heartbeat=ok` after the
    next `safety_state` notify.
 5. Adjust Left output / Right output sliders. The values are saved in

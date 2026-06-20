@@ -4,3 +4,4 @@ apps/*/vite-dev*.log
 apps/*/vite-dev*.err.log
 apps/*/.vite/
 packages/*/node_modules/
+apps/web/dist/

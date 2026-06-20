@@ -2,7 +2,7 @@
 
 // Arduino IDE debug default is Serial mock only.
 //
-// To try BLE advertise-only from Arduino IDE:
+// To try BLE from Arduino IDE:
 // 1. Enable Tools -> IP/Bluetooth Stack with Bluetooth.
 // 2. Uncomment the define below.
 // 3. Upload again and scan for ROVER_BLE_DEVICE_NAME.
@@ -11,5 +11,8 @@
 #define ROVER_ENABLE_BLE_GATT
 
 #ifndef ROVER_BLE_DEVICE_NAME
-#define ROVER_BLE_DEVICE_NAME "SmartphoneRover-PicoW"
+// Multiple-rover demo examples. Enable exactly one name per flashed rover.
+// #define ROVER_BLE_DEVICE_NAME "#02-SDRover"
+// #define ROVER_BLE_DEVICE_NAME "#03-SDRover"
+#define ROVER_BLE_DEVICE_NAME "#01-SDRover"
 #endif

@@ -26,6 +26,10 @@ export class MockRoverTransport implements RoverTransport {
     return this.#connected;
   }
 
+  public getConnectedDeviceName(): string | null {
+    return this.#connected ? "MockTransport" : null;
+  }
+
   public setTelemetryHandler(): void {
     // Mock transport does not emit firmware telemetry.
   }
