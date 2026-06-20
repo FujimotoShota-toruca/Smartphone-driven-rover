@@ -28,6 +28,46 @@ $env:VITE_BASE_PATH="/Smartphone-driven-rover/"
 npm.cmd run build --workspace apps/web
 ```
 
+## GitHub Pages
+
+This repository includes a GitHub Actions workflow:
+
+```text
+.github/workflows/deploy-pages.yml
+```
+
+The workflow runs on pushes to `main` and can also be started manually from the
+Actions tab. It performs:
+
+1. `npm ci`
+2. `npm test`
+3. `npm run typecheck`
+4. `npm run build --workspace apps/web`
+5. Upload of `apps/web/dist` as the Pages artifact
+6. Deploy to GitHub Pages
+
+For GitHub Pages, the workflow sets:
+
+```text
+VITE_BASE_PATH=/<REPO_NAME>/
+```
+
+This is required because the expected URL is:
+
+```text
+https://<USER>.github.io/<REPO>/
+```
+
+Before the first deploy, configure the repository in GitHub:
+
+1. Open repository Settings.
+2. Open Pages.
+3. Set Build and deployment source to GitHub Actions.
+4. Push to `main` or run `Deploy Web App to GitHub Pages` manually.
+
+The deploy artifact is generated from `apps/web/dist`. That directory is ignored
+by git and should not be committed.
+
 ## HTTPS Requirement
 
 Web Bluetooth requires a secure context. Use an HTTPS static host for phone
